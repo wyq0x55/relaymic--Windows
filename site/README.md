@@ -87,17 +87,41 @@ Cloudflare 会给**每个新建的代理 zone** 自动建一个 Web Analytics �
 3. **beacon 里的 `token` 不是 site_tag**。按 token 拼管理页 URL 打不开，
    要用 `site_token` 去 `rum/site_info/list` 里反查对应的 `site_tag`
 
-关掉的办法（Dashboard 登录态下，在浏览器控制台执行）：
+**结论：别指望从 Cloudflare 那边关掉它。** 两条配置都试过，都确认落库、没被回滚，
+边缘等了 12 分钟照样注入：
 
 ```js
-await fetch('/api/v4/accounts/<ACCOUNT_ID>/rum/site_info/<SITE_TAG>', {
+// 1. auto_install —— 这只是「新 zone 要不要自动装」的标记，
+//    关掉它不会撤下已经生效的注入规则
+await fetch('/api/v4/accounts/<ACCT>/rum/site_info/<SITE_TAG>', {
   method: 'PUT', credentials: 'include',
   headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ zone_tag: '<ZONE_ID>', auto_install: false }),
+  body: JSON.stringify({ zone_tag: '<ZONE>', auto_install: false }),
+}).then(r => r.json())
+
+// 2. ruleset 里那条 host:*/paths:* 的规则 —— 真正在注入的就是它。
+//    注意路由：读用复数 /rules，写用单数 /rule/{id}，写成复数一律 404
+await fetch('/api/v4/accounts/<ACCT>/rum/v2/<RULESET_ID>/rule/<RULE_ID>', {
+  method: 'PUT', credentials: 'include',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ host: '*', paths: ['*'], inclusive: true, is_paused: true }),
 }).then(r => r.json())
 ```
 
-改完边缘要几分钟才传播，别急着判定没生效。
+**真正解决它的是 `_headers` 里给 HTML 加的 `no-transform`**（见该文件的注释）。
+标准指令，禁止中间代理改动响应体，Cloudflare 据此关掉对 HTML 的全部后处理。
+实测 brotli 压缩不受影响。
+
+加完还要**清一次 zone 缓存**，否则边缘上那份加 no-transform 之前的旧 HTML 还在，
+带随机查询参数也照样命中：
+
+```js
+await fetch('/api/v4/zones/<ZONE>/purge_cache', {
+  method: 'POST', credentials: 'include',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ purge_everything: true }),
+}).then(r => r.json())
+```
 
 真要装分析，得同时改 CSP 放行和隐私政策里"无分析脚本"那段 —— 两者必须同步，
 否则政策就是假的。
