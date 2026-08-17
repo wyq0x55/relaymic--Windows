@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>接收监控</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --fg: #e8eaed;
+    --dim: #8a8f98;
+    --line: #262a33;
+    --ok: #35c46b;
+    --warn: #e0a034;
+    --err: #e05a4f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.6 -apple-system, "Segoe UI", system-ui, sans-serif;
+    padding: 24px;
+  }
+  main { width: 100%; max-width: 480px; margin: 0 auto; }
+  h1 { font-size: 17px; font-weight: 600; margin: 0 0 20px; }
+
+  .card {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .card h2 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--dim);
+    margin: 0 0 12px;
+  }
+
+  #state { font-size: 15px; font-weight: 600; }
+  #path { color: var(--dim); font-size: 13px; margin: 4px 0 16px; word-break: break-all; }
+
+  .meter {
+    height: 4px;
+    margin-bottom: 16px;
+    background: var(--line);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .meter i {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--ok);
+    transition: width .2s linear;
+  }
+
+  .stats { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--dim); }
+  .stats b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .segment { padding: 12px 0; border-top: 1px solid var(--line); }
+  .segment:first-child { border-top: 0; padding-top: 0; }
+  .segment .meta { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; margin-bottom: 8px; }
+  .segment .time { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .segment .peak { color: var(--dim); margin-left: auto; font-variant-numeric: tabular-nums; }
+  .segment audio { width: 100%; display: block; }
+  .lane { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+  .lane-label { flex: 0 0 52px; font-size: 12px; color: var(--dim); }
+  .lane audio { flex: 1; height: 32px; }
+
+  .empty { color: var(--dim); font-size: 13px; text-align: center; padding: 8px 0; }
+
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .err { color: var(--err); }
+</style>
+</head>
+<body>
+<main>
+  <h1>接收监控</h1>
+
+  <div class="card">
+    <div id="state" class="warn">—</div>
+    <div id="path">—</div>
+    <div class="meter"><i id="level"></i></div>
+    <div class="stats">
+      <span>缓冲 <b id="buffered">—</b></span>
+      <span>丢弃 <b id="dropped">—</b></span>
+      <span>欠载 <b id="starved">—</b></span>
+      <span>收包 <b id="received">—</b></span>
+      <span>丢包 <b id="lost">—</b></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>分段录音</h2>
+    <div id="segments">
+      <div class="empty">还没有录到语音段</div>
+    </div>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+
+// 接收端多数故障（进程没起、局域网断了）会让 fetch 直接抛错而不是返回非 200，
+// 两种情况一律归一成"离线"，用户不用分辨是哪一种。
+async function pollStatus() {
+  try {
+    const res = await fetch('/api/status');
+    if (!res.ok) throw new Error(String(res.status));
+    renderStatus(await res.json());
+  } catch {
+    renderOffline();
+  }
+}
+
+function renderStatus(s) {
+  const connected = s.state === 'connected';
+  $('state').textContent = s.state || '—';
+  $('state').className = connected ? 'ok' : 'warn';
+  $('path').textContent = s.path || '—';
+
+  // dBFS 是负数，-60 视为静音、0 视为削波，线性映射成宽度。
+  const db = typeof s.levelDb === 'number' ? s.levelDb : -60;
+  $('level').style.width = Math.max(0, Math.min(100, (db + 60) / 60 * 100)) + '%';
+
+  $('buffered').textContent = s.bufferedMs != null ? s.bufferedMs + ' ms' : '—';
+  $('dropped').textContent = s.dropped ?? '—';
+  $('starved').textContent = s.starved ?? '—';
+  $('received').textContent = s.received ?? '—';
+  $('lost').textContent = s.lost ?? '—';
+}
+
+function renderOffline() {
+  $('state').textContent = '接收端离线';
+  $('state').className = 'err';
+  $('path').textContent = '—';
+  $('level').style.width = '0';
+  $('buffered').textContent = $('dropped').textContent = $('starved').textContent =
+    $('received').textContent = $('lost').textContent = '—';
+}
+
+pollStatus();
+setInterval(pollStatus, 1000);
+
+// 分段列表接口已按新→旧排好序，这里只负责渲染。
+// 拿不到时保留原样就行，顶部状态已经在提示离线了，不用重复报错。
+async function pollSegments() {
+  try {
+    const res = await fetch('/api/segments');
+    if (!res.ok) throw new Error(String(res.status));
+    renderSegments(await res.json());
+  } catch { /* 保留上一次的列表 */ }
+}
+
+// 各路按静音独立分段，同一句话在各路的开始时刻只差缓冲深度那点时间。
+// LANES 描述链路上的采样点，顺序就是音频流经的顺序。
+const LANES = [
+  { key: 'pre',  label: 'ring 前',      prefix: '/api/segments/' },
+  { key: 'post', label: 'ring 后',      prefix: '/api/segments/post/' },
+  { key: 'loop', label: 'BlackHole 后', prefix: '/api/segments/loop/' },
+];
+
+function renderSegments(data) {
+  const box = $('segments');
+  if (LANES.every(l => !(data[l.key] || []).length)) {
+    box.innerHTML = '<div class="empty">还没有录到语音段</div>';
+    return;
+  }
+
+  // 以时间为轴配对：把所有路的段扔进行列表，2 秒内的归为同一句。
+  const rows = [];
+  for (const lane of LANES) {
+    for (const seg of data[lane.key] || []) {
+      const t = new Date(seg.time);
+      let row = rows.find(r => Math.abs(t - r.t) < 2000 && !r[lane.key]);
+      if (!row) { row = { t }; rows.push(row); }
+      row[lane.key] = seg;
+    }
+  }
+  rows.sort((a, b) => b.t - a.t);
+
+  const player = (seg, lane) => seg ? `
+      <div class="lane"><span class="lane-label">${lane.label}</span>
+      <audio controls preload="none" src="${lane.prefix}${encodeURIComponent(seg.name)}"></audio></div>`
+    : `<div class="lane"><span class="lane-label">${lane.label}</span><span class="empty">—</span></div>`;
+
+  box.innerHTML = rows.map(row => {
+    const m = LANES.map(l => row[l.key]).find(Boolean);
+    return `
+    <div class="segment">
+      <div class="meta">
+        <span class="time">${formatTime(m.time)}</span>
+        <span>${(m.durMs / 1000).toFixed(1)}s</span>
+        <span class="peak">${m.peakDb.toFixed(1)} dB</span>
+      </div>
+      ${LANES.map(l => player(row[l.key], l)).join('')}
+    </div>`;
+  }).join('');
+}
+
+function formatTime(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '—';
+  const p = n => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+pollSegments();
+setInterval(pollSegments, 3000);
+</script>
+</body>
+</html>
