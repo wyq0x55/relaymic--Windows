@@ -5,6 +5,20 @@
   Permissions-Policy: geolocation=(), camera=(), payment=()
   Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'
 
+# no-transform 是标准指令：禁止中间代理改动响应体。Cloudflare 会据此关掉它
+# 对 HTML 的全部后处理 —— 包括自动往页面里塞 Web Analytics 的 beacon。
+# 那个 beacon 会被本站的 script-src 'self' 拦下，除了给每个访客留一条 console
+# 报错什么也做不成。这条声明同时挡住将来的 Rocket Loader、自动 minify 之类，
+# 它们同样会破坏 CSP。只加在 HTML 上，静态资源不需要。
+/
+  Cache-Control: no-transform, public, max-age=0, must-revalidate
+
+/privacy
+  Cache-Control: no-transform, public, max-age=0, must-revalidate
+
+/terms
+  Cache-Control: no-transform, public, max-age=0, must-revalidate
+
 # 规则是累加的，路径不能重叠 —— 用 /assets/* 兜底会让字体同时收到两个
 # Cache-Control，浏览器取哪个不好说，长缓存就白设了。
 /assets/fonts/*
