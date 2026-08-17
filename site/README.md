@@ -64,16 +64,43 @@ npm run waitlist:count    # 按天 × 来源聚合，投流复盘看这个
 
 ## 上线前必须处理
 
-- [ ] `public/privacy.html` 里的 `[LEGAL NAME OR ENTITY]` —— GDPR 要求写明数据控制者，
-      不能留占位就上线
+- [x] 数据控制者已写实：Dachun Hui，上海。同时补了第三国传输那节 ——
+      控制者在中国、库在 Cloudflare 北美区，GDPR Art. 13(1)(f) 要求明说
+- [x] **Cloudflare Web Analytics 自动注入已关**（`auto_install: false`）。
+      详情见下节，将来新开 zone 会再踩一次
 - [ ] `hey@relaymic.com` 要能真正收信（Cloudflare Email Routing 转发到常用邮箱即可，免费）
 - [ ] Google Search Console 验证 + 提交 `sitemap.xml`
-- [ ] **关掉 Cloudflare Web Analytics 的自动注入**：新 zone 默认开着，它会往页面
-      塞一个 `static.cloudflareinsights.com` 的 beacon，被本站 CSP 拦下 ——
-      结果是数据一条收不到、每个访客白发一个被拒请求、console 留一条红色报错。
-      路径：Dashboard → relaymic.com → Analytics & Logs → Web Analytics →
-      关掉 Automatic Setup。关掉后站点回到零第三方脚本，和隐私政策的措辞一致。
-      （真要装分析，得同时改 CSP 放行和隐私政策里"无分析脚本"那段，两者必须同步）
+
+## 那个自动注入的 beacon（记下来，免得下次再查一遍）
+
+Cloudflare 会给**每个新建的代理 zone** 自动建一个 Web Analytics 站点并开
+`auto_install`，往 HTML 里塞 `static.cloudflareinsights.com` 的 beacon。
+本站 CSP 是 `script-src 'self'`，于是它被拦下 —— 数据一条收不到，每个访客还白发
+一个被拒请求、console 留一条红色报错。
+
+排查时有三个坑：
+
+1. **纯 curl 看不见它**。注入只对"像浏览器"的请求做，要带上 UA 和 `Accept: text/html`
+   才复现得出来
+2. **zone 页面里的「真实用户度量 (RUM)」显示未启用**，看着像没开，但注入照旧 ——
+   那个开关和这个 auto_install 不是一回事
+3. **beacon 里的 `token` 不是 site_tag**。按 token 拼管理页 URL 打不开，
+   要用 `site_token` 去 `rum/site_info/list` 里反查对应的 `site_tag`
+
+关掉的办法（Dashboard 登录态下，在浏览器控制台执行）：
+
+```js
+await fetch('/api/v4/accounts/<ACCOUNT_ID>/rum/site_info/<SITE_TAG>', {
+  method: 'PUT', credentials: 'include',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ zone_tag: '<ZONE_ID>', auto_install: false }),
+}).then(r => r.json())
+```
+
+改完边缘要几分钟才传播，别急着判定没生效。
+
+真要装分析，得同时改 CSP 放行和隐私政策里"无分析脚本"那段 —— 两者必须同步，
+否则政策就是假的。
 
 ## 重新生成 OG 图
 
