@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RelayMic — a real microphone for the Mac you remote into</title>
+<meta name="description" content="Remote desktop forwards your screen, keyboard and mouse — not your voice. RelayMic turns any browser into a system microphone on the Mac you're controlling. Works alongside TeamViewer, AnyDesk, Parsec, RustDesk and Jump Desktop.">
+<link rel="canonical" href="https://relaymic.com/">
+<meta name="theme-color" content="#131417">
+
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://relaymic.com/">
+<meta property="og:title" content="RelayMic — a real microphone for the Mac you remote into">
+<meta property="og:description" content="Speak into a browser anywhere. The Mac you're remoting into hears it as a system input device.">
+<meta property="og:image" content="https://relaymic.com/assets/og.png">
+<meta name="twitter:card" content="summary_large_image">
+
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="preload" href="/assets/fonts/archivo-var.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/site.css">
+
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "RelayMic",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "macOS 12+",
+  "description": "Turns any browser into a system microphone on a remote Mac, independent of the remote desktop software in use.",
+  "offers": { "@type": "Offer", "price": "4.99", "priceCurrency": "USD" }
+}
+</script>
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="/">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      RelayMic
+    </a>
+    <nav class="nav-links">
+      <a href="#how">How it works</a>
+      <a href="#gap">The gap</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <a class="btn btn-solid" href="#get">Get early access</a>
+  </div>
+</header>
+
+<main>
+
+<!-- ── Hero ─────────────────────────────────────────── -->
+<section class="wrap hero" id="get">
+  <p class="eyebrow">Microphone passthrough for remote Macs</p>
+  <h1>Speak into a Mac <br class="brk"><span class="amber">that isn't in the room.</span></h1>
+  <p class="lede">
+    Remote desktop forwards your screen, your keyboard and your mouse. It doesn't forward your
+    voice. RelayMic does — as a real system microphone on the Mac you're controlling, so dictation,
+    Zoom and everything else simply find it in the input list.
+  </p>
+
+  <form class="signup" data-signup>
+    <div class="signup-row">
+      <label class="visually-hidden" for="email-top">Email address</label>
+      <input id="email-top" type="email" name="email" required autocomplete="email" placeholder="you@company.com" spellcheck="false">
+      <button class="btn btn-solid" type="submit">Get early access</button>
+    </div>
+    <div class="hp" aria-hidden="true"><label for="company-top">Company</label><input id="company-top" type="text" name="company" tabindex="-1" autocomplete="off"></div>
+    <p class="signup-note" data-note></p>
+  </form>
+
+  <p class="hero-meta">macOS 12+ on the receiving Mac &middot; any browser sends &middot; 7-day trial, then $4.99/mo</p>
+</section>
+
+<!-- ── 规格条 ───────────────────────────────────────── -->
+<section class="band">
+  <div class="wrap">
+    <div class="specs">
+      <div class="spec"><b>48 kHz</b><span>Opus, stereo</span></div>
+      <div class="spec"><b>P2P</b><span>Direct whenever it can be</span></div>
+      <div class="spec"><b>0 bytes</b><span>Of your audio stored</span></div>
+      <div class="spec"><b>3 Macs</b><span>Per license</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 签名元素：信号链路 ───────────────────────────── -->
+<section class="band band-pad">
+  <div class="wrap">
+    <div class="panel">
+      <div class="panel-head">
+        <span>Live path</span>
+        <span class="right">
+          <span>RTT <b id="rtt">88 ms</b></span>
+          <span class="state-live"><span class="dot"></span>Connected</span>
+        </span>
+      </div>
+      <div class="path">
+        <div>
+          <div class="node-label">Input &middot; where you are</div>
+          <div class="node-name">Chrome on a Windows laptop</div>
+          <div class="meter" id="meter" aria-hidden="true"></div>
+          <div class="meter-read"><span id="readout">−14.2 dBFS</span><span>48 kHz &middot; Opus</span></div>
+        </div>
+
+        <div class="path-mid">
+          <div class="wire" aria-hidden="true"><i></i></div>
+          <div class="wire-label">Encrypted<br>peer-to-peer</div>
+        </div>
+
+        <div>
+          <div class="node-label">Output &middot; the Mac you rent, own or left at home</div>
+          <div class="node-name">System input devices</div>
+          <div class="devices">
+            <div class="device"><span class="tick"></span>MacBook Pro Microphone</div>
+            <div class="device is-on">
+              <span class="tick">▸</span>RelayMic
+              <span class="mini" id="mini" aria-hidden="true"></span>
+            </div>
+            <div class="device"><span class="tick"></span>Aggregate Device</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="panel-note">
+      Simulated waveform — but that lag between the two meters is the real one: your voice arrives
+      about as fast as it would on a phone call.
+    </p>
+  </div>
+</section>
+
+<!-- ── 空档 ─────────────────────────────────────────── -->
+<section class="band band-pad" id="gap">
+  <div class="wrap">
+    <p class="eyebrow">Why you couldn't find this already</p>
+    <h2>Every remote tool forwards a screen. None of them carry a voice to a Mac.</h2>
+    <p class="lede">
+      Windows has had microphone redirection since RDP shipped it — one line in a config file. The
+      moment the machine on the other end is a Mac, the feature is gone from every tool on the
+      market. Not hidden in a menu. Not there.
+    </p>
+
+    <table class="compare">
+      <thead>
+        <tr>
+          <th scope="col">Remote into a Mac with</th>
+          <th scope="col">Screen, keyboard, mouse</th>
+          <th scope="col" class="col-mic">Your microphone</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><th scope="row">TeamViewer</th><td class="yes">Yes</td><td class="col-mic no">No — uses the Mac's own mic</td></tr>
+        <tr><th scope="row">AnyDesk</th><td class="yes">Yes</td><td class="col-mic no">No</td></tr>
+        <tr><th scope="row">Parsec</th><td class="yes">Yes</td><td class="col-mic no">No</td></tr>
+        <tr><th scope="row">RustDesk</th><td class="yes">Yes</td><td class="col-mic no">No</td></tr>
+        <tr><th scope="row">Jump Desktop</th><td class="yes">Yes</td><td class="col-mic no">No</td></tr>
+        <tr><th scope="row">macOS Screen Sharing</th><td class="yes">Yes</td><td class="col-mic no">No</td></tr>
+        <tr><th scope="row">Microsoft RDP <em>(and the far end is Windows)</em></th><td class="yes">Yes</td><td class="col-mic yes">Yes — built in, and it stops at Windows</td></tr>
+        <tr class="is-us"><th scope="row">RelayMic</th><td>Leaves that to your remote tool</td><td class="col-mic yes">Yes — as a system input device</td></tr>
+      </tbody>
+    </table>
+
+    <p class="footnote">
+      TeamViewer's own community threads confirm a remote session captures audio from the remote
+      machine's microphone, not from yours; the feature request for transmitting your local mic is
+      still open. RelayMic doesn't replace your remote desktop tool — it runs beside whichever one
+      you already use.
+    </p>
+  </div>
+</section>
+
+<!-- ── 三步 ─────────────────────────────────────────── -->
+<section class="band band-pad" id="how">
+  <div class="wrap">
+    <p class="eyebrow">Setup, in order</p>
+    <h2>Install once on the Mac. After that it's a six-digit code.</h2>
+
+    <div class="steps">
+      <div class="step">
+        <span class="step-n">01</span>
+        <h3>Install on the Mac you remote into</h3>
+        <p>
+          One signed package. It sets up a virtual audio device and a small background service,
+          then shows you a six-digit pairing code. Nothing to configure, no ports to forward.
+        </p>
+      </div>
+      <div class="step">
+        <span class="step-n">02</span>
+        <h3>Open relaymic.com wherever you are</h3>
+        <p>
+          A Windows laptop, an iPad, a borrowed machine in an office — any browser that has a
+          microphone. Type the code. The connection is direct between the two devices.
+        </p>
+      </div>
+      <div class="step">
+        <span class="step-n">03</span>
+        <h3>Choose RelayMic as the input</h3>
+        <p>
+          In Zoom, in dictation, in Audacity, in whatever is running over there. To the Mac it is
+          an ordinary microphone, so nothing needs to know RelayMic exists.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 工程细节（护城河：音质专业性）─────────────────── -->
+<section class="band band-pad">
+  <div class="wrap">
+    <p class="eyebrow">Where the work actually went</p>
+    <h2>Sending audio is easy. The last 200 milliseconds are not.</h2>
+    <p class="lede">
+      RelayMic started as a tool its author needed daily, across three Macs, and every parameter
+      below is there because something broke without it.
+    </p>
+
+    <div class="notes">
+      <div class="note">
+        <h3>A jitter buffer sized for real networks</h3>
+        <p>
+          150 ms of target depth, measured rather than guessed. The 20 ms that sounds brilliant on a
+          LAN turns into stuttering the first time you use hotel Wi-Fi.
+        </p>
+      </div>
+      <div class="note">
+        <h3>Silence suppression deliberately off</h3>
+        <p>
+          DTX saves bandwidth by not sending silence. It also clips the front of a quietly spoken
+          word, and dictation loses the first syllable. Speech doesn't need the savings.
+        </p>
+      </div>
+      <div class="note">
+        <h3>Three recording taps for when it sounds wrong</h3>
+        <p>
+          Before processing, after the buffer, and read back out of the virtual device. "It sounded
+          bad" becomes a waveform you can point at, on the segment where it happened.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── 定价 ─────────────────────────────────────────── -->
+<section class="band band-pad" id="pricing">
+  <div class="wrap">
+    <p class="eyebrow">Pricing</p>
+    <h2>One subscription, three Macs, relay included.</h2>
+
+    <div class="price-grid">
+      <div class="price">
+        <div class="price-label">Monthly</div>
+        <div class="price-amt">$4.99 <small>/ month</small></div>
+        <div class="price-sub">7-day free trial, everything included</div>
+        <ul class="price-list">
+          <li>Up to 3 Macs on one account</li>
+          <li>Unlimited sending devices</li>
+          <li>Relay bandwidth included</li>
+          <li>Cancel any time</li>
+        </ul>
+      </div>
+      <div class="price">
+        <div class="price-label">Yearly <span class="tag">Best value</span></div>
+        <div class="price-amt">$49 <small>/ year</small></div>
+        <div class="price-sub">Two months off the monthly price</div>
+        <ul class="price-list">
+          <li>Everything in monthly</li>
+          <li>Priority on new platform support</li>
+          <li>Same 7-day trial first</li>
+          <li>Regional pricing where it applies</li>
+        </ul>
+      </div>
+    </div>
+
+    <p class="footnote">
+      Early access opens in batches. Everyone on the list gets the trial before being asked for a
+      card, and founding subscribers keep their price.
+    </p>
+  </div>
+</section>
+
+<!-- ── FAQ ──────────────────────────────────────────── -->
+<section class="band band-pad" id="faq">
+  <div class="wrap">
+    <p class="eyebrow">Questions worth asking first</p>
+    <h2>What it does, and what it deliberately doesn't.</h2>
+
+    <div class="faq">
+      <details>
+        <summary>Does it matter which remote desktop software I use?</summary>
+        <p>
+          No. RelayMic doesn't hook into TeamViewer, AnyDesk, Parsec, RustDesk, Jump Desktop or
+          anything else — it carries audio on its own connection and presents a microphone on the
+          Mac. Your remote tool keeps doing screen and input, unaware anything changed. You can also
+          use RelayMic with no remote desktop tool at all.
+        </p>
+      </details>
+      <details>
+        <summary>Do I need to install anything on the device I'm speaking from?</summary>
+        <p>
+          No. The sending side is a web page. Chrome, Edge, Safari or Firefox on Windows, macOS,
+          Linux, iPad or Android — whatever is in front of you, including machines you're not
+          allowed to install software on.
+        </p>
+      </details>
+      <details>
+        <summary>What happens to my audio on the way?</summary>
+        <p>
+          It goes browser to Mac over an encrypted peer-to-peer connection — in most cases directly,
+          without passing through us at all. When two networks refuse to connect directly, the
+          stream falls back to a relay that forwards encrypted packets and stores none of them. We
+          never hold recordings, and there is no server-side transcription.
+        </p>
+      </details>
+      <details>
+        <summary>What is the virtual audio device it installs?</summary>
+        <p>
+          BlackHole, an open-source macOS audio driver. RelayMic installs it from its official
+          package rather than bundling a copy, and removes cleanly if you uninstall. It's what
+          allows any app on the Mac to see RelayMic as an ordinary input.
+        </p>
+      </details>
+      <details>
+        <summary>I'm on Windows connecting to Windows. Do I need this?</summary>
+        <p>
+          No — Microsoft RDP already redirects your microphone, at no cost. RelayMic exists because
+          that feature has no equivalent when the far end is a Mac. Use what's free where it works.
+        </p>
+      </details>
+      <details>
+        <summary>My iPhone and my Mac are in the same room. Do I need this?</summary>
+        <p>
+          Probably not. Apple's Continuity already lets a nearby iPhone act as a Mac microphone for
+          free. RelayMic is for distance: different building, different city, different country.
+        </p>
+      </details>
+      <details>
+        <summary>How much delay is there really?</summary>
+        <p>
+          Roughly a phone call. On a direct connection you're looking at a network round trip plus a
+          150 ms buffer that absorbs the jitter real networks produce. It's built for talking,
+          dictating and meetings — not for monitoring yourself while recording music.
+        </p>
+      </details>
+      <details>
+        <summary>Can I try it before paying?</summary>
+        <p>
+          Yes. Seven days, every feature, no card up front. If it doesn't do what this page says,
+          you've lost an install and a few minutes.
+        </p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ── 结尾 CTA ─────────────────────────────────────── -->
+<section class="band">
+  <div class="wrap end">
+    <h2>Give the Mac over there a microphone.</h2>
+    <p class="lede">
+      Early access is opening in batches. Leave an email and you'll hear from us once — when it's
+      your turn.
+    </p>
+    <form class="signup" data-signup>
+      <div class="signup-row">
+        <label class="visually-hidden" for="email-end">Email address</label>
+        <input id="email-end" type="email" name="email" required autocomplete="email" placeholder="you@company.com" spellcheck="false">
+        <button class="btn btn-solid" type="submit">Get early access</button>
+      </div>
+      <div class="hp" aria-hidden="true"><label for="company-end">Company</label><input id="company-end" type="text" name="company" tabindex="-1" autocomplete="off"></div>
+      <p class="signup-note" data-note></p>
+    </form>
+  </div>
+</section>
+
+</main>
+
+<footer class="wrap foot">
+  <span>&copy; 2026 RelayMic</span>
+  <a href="/privacy">Privacy</a>
+  <a href="/terms">Terms</a>
+  <a href="mailto:hey@relaymic.com">hey@relaymic.com</a>
+  <span class="sep">Built for the Mac that isn't in front of you</span>
+</footer>
+
+<script src="/assets/signal.js" defer></script>
+</body>
+</html>

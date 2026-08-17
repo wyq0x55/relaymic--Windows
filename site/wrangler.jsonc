@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "relaymic-site",
+  "main": "./src/index.js",
+  "compatibility_date": "2026-08-17",
+
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS"
+  },
+
+  "routes": [
+    { "pattern": "relaymic.com", "custom_domain": true },
+    { "pattern": "www.relaymic.com", "custom_domain": true }
+  ],
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "relaymic",
+      "database_id": "5739a3e1-1d31-49fd-a66c-b8e6486d13f4"
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  }
+}

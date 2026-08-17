@@ -1,2 +1,7 @@
 bin/
 .context/
+.DS_Store
+
+# 落地页（site/）
+node_modules/
+.wrangler/
