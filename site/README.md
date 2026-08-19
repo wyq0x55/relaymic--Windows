@@ -17,7 +17,8 @@ public/            静态资源，整站 ~85KB（含自托管字体）
     fonts/         Archivo + IBM Plex Mono（自托管，见下）
 src/index.js       Worker：/api/subscribe 之外的请求全部交给静态资源
 schema.sql         waitlist 表
-tools/             OG 图的渲染源，不参与部署
+tools/waitlist.mjs 看名单的脚本
+tools/og-*         OG 图的渲染源，不参与部署
 ```
 
 **字体自托管不是洁癖**：引用 Google Fonts CDN 会把访客 IP 送给第三方，欧盟已有判例。
@@ -55,8 +56,8 @@ database_id 填进 `wrangler.jsonc`，再 `npm run db:init` 建表。
 ## 看名单
 
 ```sh
-npm run waitlist          # 最近 50 条
-npm run waitlist:count    # 按天 × 来源聚合，投流复盘看这个
+npm run waitlist            # 总数、今日新增、按天、按来源、最近 20 条明细
+npm run waitlist -- --all   # 明细不截断
 ```
 
 投流链接带上 `?ref=` 就能分渠道归因，例如
@@ -68,8 +69,29 @@ npm run waitlist:count    # 按天 × 来源聚合，投流复盘看这个
       控制者在中国、库在 Cloudflare 北美区，GDPR Art. 13(1)(f) 要求明说
 - [x] **Cloudflare Web Analytics 自动注入已关**（`auto_install: false`）。
       详情见下节，将来新开 zone 会再踩一次
-- [ ] `hey@relaymic.com` 要能真正收信（Cloudflare Email Routing 转发到常用邮箱即可，免费）
+- [x] `hey@relaymic.com` 已能收信：Email Routing 已启用，规则 `hey@ → chshu4@gmail.com`
+- [x] 新邮箱进名单会发通知邮件到 chshu4@gmail.com，见下节
 - [ ] Google Search Console 验证 + 提交 `sitemap.xml`
+
+## 新邮箱通知
+
+有人提交邮箱、且是新地址时，Worker 发一封通知到 `chshu4@gmail.com`：主题带当前总数，
+正文是邮箱、国家、来源。重复提交不通知 —— 没有信息量，攒多了就没人看了。
+
+几个刻意的选择：
+
+- **发信挂在 `ctx.waitUntil()` 上**。投流期间响应速度直接影响转化，不能让访客
+  等一封给作者自己看的邮件。发失败只记日志，名单已经落库，通知丢了不影响任何事
+- **`destination_address` 锁在 binding 上**（`wrangler.jsonc`）。这层限制在平台侧，
+  代码写错也发不到别处去
+- **MIME 是手写的**。一封纯文本短信件，为它引一个库不值得。主题和正文都走 base64：
+  中文在邮件头里必须按 RFC 2047 编码，正文不编码则要赌各家客户端对 8bit 的容忍度
+
+发信域名 `relaymic.com` 的 MX / SPF / DKIM 由 Email Routing 启用时自动配好，
+实测邮件进 Gmail 收件箱，不是垃圾箱。
+
+改收件人要动三处：`wrangler.jsonc` 的 `destination_address`、`src/index.js` 的
+`NOTIFY_TO`、以及 Cloudflare 那边的目标地址验证（新地址要先在 Email Routing 里验证过）。
 
 ## 那个自动注入的 beacon（记下来，免得下次再查一遍）
 

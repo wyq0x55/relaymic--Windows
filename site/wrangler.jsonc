@@ -14,6 +14,15 @@
     { "pattern": "www.relaymic.com", "custom_domain": true }
   ],
 
+  // 通知邮件。destination_address 把收件人锁死在这一个地址上 ——
+  // 这层限制在平台侧，代码写错也发不到别处去。
+  "send_email": [
+    {
+      "name": "NOTIFY",
+      "destination_address": "chshu4@gmail.com"
+    }
+  ],
+
   "d1_databases": [
     {
       "binding": "DB",

@@ -7,8 +7,7 @@
     "deploy": "wrangler deploy",
     "db:init": "wrangler d1 execute relaymic --remote --file=./schema.sql",
     "db:init:local": "wrangler d1 execute relaymic --local --file=./schema.sql",
-    "waitlist": "wrangler d1 execute relaymic --remote --command \"SELECT created_at, email, country, ref FROM waitlist ORDER BY id DESC LIMIT 50\"",
-    "waitlist:count": "wrangler d1 execute relaymic --remote --command \"SELECT date(created_at) AS day, ref, count(*) AS signups FROM waitlist GROUP BY day, ref ORDER BY day DESC\""
+    "waitlist": "node tools/waitlist.mjs"
   },
   "devDependencies": {
     "wrangler": "^4"
