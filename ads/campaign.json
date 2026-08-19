@@ -1,0 +1,582 @@
+{
+  "ad_groups": [
+    {
+      "name": "Remote Mac Core",
+      "theme": "已经在找「怎么把麦克风送到远程 Mac」的人，意图最硬",
+      "final_url_ref": "core",
+      "keywords": [
+        {
+          "text": "remote desktop microphone mac",
+          "match": "exact"
+        },
+        {
+          "text": "remote desktop microphone mac",
+          "match": "phrase"
+        },
+        {
+          "text": "use microphone over remote desktop mac",
+          "match": "exact"
+        },
+        {
+          "text": "use microphone over remote desktop mac",
+          "match": "phrase"
+        },
+        {
+          "text": "microphone passthrough remote desktop",
+          "match": "exact"
+        },
+        {
+          "text": "microphone passthrough remote desktop",
+          "match": "phrase"
+        },
+        {
+          "text": "microphone passthrough remote desktop mac",
+          "match": "exact"
+        },
+        {
+          "text": "microphone passthrough remote desktop mac",
+          "match": "phrase"
+        },
+        {
+          "text": "remote mac microphone",
+          "match": "exact"
+        },
+        {
+          "text": "remote mac microphone",
+          "match": "phrase"
+        },
+        {
+          "text": "how to use microphone remote desktop mac",
+          "match": "exact"
+        },
+        {
+          "text": "how to use microphone remote desktop mac",
+          "match": "phrase"
+        },
+        {
+          "text": "forward microphone remote desktop mac",
+          "match": "exact"
+        },
+        {
+          "text": "forward microphone remote desktop mac",
+          "match": "phrase"
+        },
+        {
+          "text": "send microphone to remote mac",
+          "match": "exact"
+        },
+        {
+          "text": "send microphone to remote mac",
+          "match": "phrase"
+        }
+      ],
+      "negatives": [],
+      "headlines": [
+        "Mic for a Remote Mac",
+        "Use Your Mic on Remote Mac",
+        "Remote Mac Mic Passthrough",
+        "Speak Into a Remote Mac",
+        "Add Voice to Remote Mac",
+        "Real Mic on the Remote Mac",
+        "Browser to Mac Microphone",
+        "Your Voice on the Remote Mac",
+        "Remote Desktop Needs a Mic",
+        "Make Voice Reach Your Mac",
+        "Mic Input for Remote Mac",
+        "Control Mac and Use Your Mic",
+        "RelayMic for Remote Macs",
+        "Try RelayMic for 7 Days",
+        "Get RelayMic Early Access"
+      ],
+      "descriptions": [
+        "Send your voice from any browser to a remote Mac as a real system microphone.",
+        "Remote desktop moves screen, keyboard and mouse. RelayMic adds your microphone.",
+        "Install on the remote Mac, open relaymic.com, enter a 6-digit code, and speak.",
+        "48 kHz Opus stereo, direct when possible, and zero bytes of your audio stored."
+      ]
+    },
+    {
+      "name": "Remote Support Tools",
+      "theme": "远程支持类工具（企业向）的用户，发现自己的麦克风传不过去",
+      "final_url_ref": "support-tools",
+      "keywords": [
+        {
+          "text": "anydesk microphone not working mac",
+          "match": "exact"
+        },
+        {
+          "text": "anydesk microphone not working mac",
+          "match": "phrase"
+        },
+        {
+          "text": "anydesk microphone mac",
+          "match": "exact"
+        },
+        {
+          "text": "anydesk microphone mac",
+          "match": "phrase"
+        },
+        {
+          "text": "use microphone anydesk mac",
+          "match": "exact"
+        },
+        {
+          "text": "use microphone anydesk mac",
+          "match": "phrase"
+        },
+        {
+          "text": "teamviewer microphone remote mac",
+          "match": "exact"
+        },
+        {
+          "text": "teamviewer microphone remote mac",
+          "match": "phrase"
+        },
+        {
+          "text": "teamviewer microphone transmission",
+          "match": "exact"
+        },
+        {
+          "text": "teamviewer microphone transmission",
+          "match": "phrase"
+        },
+        {
+          "text": "teamviewer microphone mac",
+          "match": "exact"
+        },
+        {
+          "text": "teamviewer microphone mac",
+          "match": "phrase"
+        },
+        {
+          "text": "remote support microphone mac",
+          "match": "exact"
+        },
+        {
+          "text": "remote support microphone mac",
+          "match": "phrase"
+        }
+      ],
+      "negatives": [],
+      "headlines": [
+        "Mic Missing in Your Session",
+        "Use Your Mic on Remote Mac",
+        "Add a Mic to Remote Access",
+        "Relay Voice Into Your Mac",
+        "Remote Mac Mic Passthrough",
+        "Real Mic for the Remote Mac",
+        "Speak Into Your Remote Mac",
+        "Remote Session Needs a Mic",
+        "Your Browser Becomes the Mic",
+        "Keep Your Tool, Add a Mic",
+        "Mic for Mac Remote Sessions",
+        "Works Beside Any Remote App",
+        "Voice for Remote Mac Support",
+        "7-Day RelayMic Trial",
+        "Get RelayMic Early Access"
+      ],
+      "descriptions": [
+        "Your remote tool moves screen and keyboard. RelayMic moves your voice to the Mac.",
+        "Type a 6-digit code, speak, then choose RelayMic in the Mac app you need.",
+        "Runs beside whatever remote software you already use. Nothing to reconfigure.",
+        "Try it for 7 days. Plans are $4.99 monthly or $49 yearly for up to 3 Macs."
+      ]
+    },
+    {
+      "name": "Dev Streaming Tools",
+      "theme": "低延迟串流/开发者向远程工具的用户，多半在用云 Mac 或家里的 Mac mini",
+      "final_url_ref": "streaming-tools",
+      "keywords": [
+        {
+          "text": "parsec microphone mac",
+          "match": "exact"
+        },
+        {
+          "text": "parsec microphone mac",
+          "match": "phrase"
+        },
+        {
+          "text": "parsec mic passthrough mac",
+          "match": "exact"
+        },
+        {
+          "text": "parsec mic passthrough mac",
+          "match": "phrase"
+        },
+        {
+          "text": "rustdesk microphone",
+          "match": "exact"
+        },
+        {
+          "text": "rustdesk microphone",
+          "match": "phrase"
+        },
+        {
+          "text": "rustdesk microphone mac",
+          "match": "exact"
+        },
+        {
+          "text": "rustdesk microphone mac",
+          "match": "phrase"
+        },
+        {
+          "text": "jump desktop microphone",
+          "match": "exact"
+        },
+        {
+          "text": "jump desktop microphone",
+          "match": "phrase"
+        },
+        {
+          "text": "mac screen sharing microphone",
+          "match": "exact"
+        },
+        {
+          "text": "mac screen sharing microphone",
+          "match": "phrase"
+        },
+        {
+          "text": "cloud mac microphone",
+          "match": "exact"
+        },
+        {
+          "text": "cloud mac microphone",
+          "match": "phrase"
+        }
+      ],
+      "negatives": [],
+      "headlines": [
+        "Mic Missing on Remote Mac",
+        "Use Your Mic on Remote Mac",
+        "Add Voice to Remote Access",
+        "Remote Mac Mic Passthrough",
+        "Real Mic for the Remote Mac",
+        "Speak Into Your Remote Mac",
+        "Your Browser Becomes the Mic",
+        "Keep Your Setup, Add a Mic",
+        "Mic for Mac Remote Sessions",
+        "Voice for Cloud Mac Minis",
+        "Real System Mic on Mac",
+        "A Mic That Follows You",
+        "Try RelayMic for 7 Days",
+        "3 Macs With One License",
+        "Get RelayMic Early Access"
+      ],
+      "descriptions": [
+        "Your streaming tool handles control. RelayMic sends your voice as a Mac input.",
+        "Built for cloud Macs and Mac minis you drive from another machine entirely.",
+        "Type a 6-digit code, speak, then choose RelayMic in dictation, calls or recording.",
+        "48 kHz Opus stereo, direct when possible, and zero bytes of your audio stored."
+      ]
+    },
+    {
+      "name": "Voice Tasks",
+      "theme": "按任务搜的人：要在远程 Mac 上口述、开会、录音",
+      "final_url_ref": "voice-tasks",
+      "keywords": [
+        {
+          "text": "dictation on remote mac",
+          "match": "exact"
+        },
+        {
+          "text": "dictation on remote mac",
+          "match": "phrase"
+        },
+        {
+          "text": "voice input remote mac",
+          "match": "exact"
+        },
+        {
+          "text": "voice input remote mac",
+          "match": "phrase"
+        },
+        {
+          "text": "remote mac dictation microphone",
+          "match": "exact"
+        },
+        {
+          "text": "remote mac dictation microphone",
+          "match": "phrase"
+        },
+        {
+          "text": "use phone as microphone for remote mac",
+          "match": "exact"
+        },
+        {
+          "text": "use phone as microphone for remote mac",
+          "match": "phrase"
+        },
+        {
+          "text": "browser microphone to mac",
+          "match": "exact"
+        },
+        {
+          "text": "browser microphone to mac",
+          "match": "phrase"
+        },
+        {
+          "text": "use browser as microphone mac",
+          "match": "exact"
+        },
+        {
+          "text": "use browser as microphone mac",
+          "match": "phrase"
+        },
+        {
+          "text": "virtual microphone mac remote",
+          "match": "exact"
+        },
+        {
+          "text": "virtual microphone mac remote",
+          "match": "phrase"
+        },
+        {
+          "text": "record on remote mac",
+          "match": "exact"
+        },
+        {
+          "text": "record on remote mac",
+          "match": "phrase"
+        }
+      ],
+      "negatives": [],
+      "headlines": [
+        "Dictate on a Remote Mac",
+        "Record on a Remote Mac",
+        "Take Calls on a Remote Mac",
+        "Browser Mic for Remote Mac",
+        "Phone Mic to a Remote Mac",
+        "Voice Input for Remote Mac",
+        "Turn Browser Into a Mac Mic",
+        "Use Your Voice Across Mac Apps",
+        "Real System Mic on Mac",
+        "Speak Into Your Remote Mac",
+        "Mic Input From Any Browser",
+        "Remote Mac Audio Input",
+        "Try RelayMic for 7 Days",
+        "3 Macs With One License",
+        "Get RelayMic Early Access"
+      ],
+      "descriptions": [
+        "Dictate, take calls or record on a remote Mac using the mic where you actually are.",
+        "Open RelayMic in a browser, enter a 6-digit code and speak into the remote Mac.",
+        "Every Mac app sees RelayMic in its input-device list like an ordinary microphone.",
+        "For a Mac you control from elsewhere, not a phone sitting next to your own Mac."
+      ]
+    },
+    {
+      "name": "Espanol Mac Remoto",
+      "theme": "西语市场：AnyDesk/TeamViewer 占有率高，痛点表述和英文不同",
+      "final_url_ref": "es",
+      "keywords": [
+        {
+          "text": "micrófono escritorio remoto mac",
+          "match": "exact"
+        },
+        {
+          "text": "micrófono escritorio remoto mac",
+          "match": "phrase"
+        },
+        {
+          "text": "usar micrófono en escritorio remoto",
+          "match": "exact"
+        },
+        {
+          "text": "usar micrófono en escritorio remoto",
+          "match": "phrase"
+        },
+        {
+          "text": "usar micrófono en escritorio remoto mac",
+          "match": "exact"
+        },
+        {
+          "text": "usar micrófono en escritorio remoto mac",
+          "match": "phrase"
+        },
+        {
+          "text": "micrófono remoto mac",
+          "match": "exact"
+        },
+        {
+          "text": "micrófono remoto mac",
+          "match": "phrase"
+        },
+        {
+          "text": "pasar micrófono por escritorio remoto",
+          "match": "exact"
+        },
+        {
+          "text": "pasar micrófono por escritorio remoto",
+          "match": "phrase"
+        },
+        {
+          "text": "anydesk micrófono no funciona",
+          "match": "exact"
+        },
+        {
+          "text": "anydesk micrófono no funciona",
+          "match": "phrase"
+        },
+        {
+          "text": "anydesk micrófono no funciona mac",
+          "match": "exact"
+        },
+        {
+          "text": "anydesk micrófono no funciona mac",
+          "match": "phrase"
+        },
+        {
+          "text": "teamviewer micrófono mac",
+          "match": "exact"
+        },
+        {
+          "text": "teamviewer micrófono mac",
+          "match": "phrase"
+        },
+        {
+          "text": "micrófono virtual mac",
+          "match": "exact"
+        },
+        {
+          "text": "micrófono virtual mac",
+          "match": "phrase"
+        },
+        {
+          "text": "dictado por voz mac remoto",
+          "match": "exact"
+        },
+        {
+          "text": "dictado por voz mac remoto",
+          "match": "phrase"
+        },
+        {
+          "text": "usar celular como micrófono para mac",
+          "match": "exact"
+        },
+        {
+          "text": "usar celular como micrófono para mac",
+          "match": "phrase"
+        },
+        {
+          "text": "usar móvil como micrófono mac",
+          "match": "exact"
+        },
+        {
+          "text": "usar móvil como micrófono mac",
+          "match": "phrase"
+        }
+      ],
+      "negatives": [],
+      "headlines": [
+        "Micrófono para Mac remoto",
+        "Habla en un Mac remoto",
+        "Usa tu micrófono a distancia",
+        "Audio para escritorio remoto",
+        "Tu voz llega al Mac remoto",
+        "Micrófono real en el Mac",
+        "Voz para tu Mac a distancia",
+        "Micrófono desde el navegador",
+        "Habla desde cualquier equipo",
+        "RelayMic para acceso remoto",
+        "Dicta en un Mac remoto",
+        "Graba en un Mac remoto",
+        "Usa tu voz en apps del Mac",
+        "Prueba RelayMic por 7 días",
+        "Solicita acceso anticipado"
+      ],
+      "descriptions": [
+        "Envía tu voz desde cualquier navegador a un Mac remoto como micrófono real del sistema.",
+        "El escritorio remoto lleva pantalla, teclado y ratón. RelayMic añade tu micrófono.",
+        "Dicta, graba o haz llamadas en el Mac remoto con el micrófono que tienes contigo.",
+        "Opus estéreo a 48 kHz, conexión directa si es posible y cero audio almacenado."
+      ]
+    }
+  ],
+  "campaign_negatives": [
+    "free",
+    "gratis",
+    "crack",
+    "cracked",
+    "torrent",
+    "warez",
+    "nulled",
+    "pirate",
+    "pirata",
+    "job",
+    "jobs",
+    "hiring",
+    "career",
+    "salary",
+    "empleo",
+    "trabajo",
+    "vacante",
+    "continuity",
+    "continuity camera",
+    "continuity microphone",
+    "camara de continuity",
+    "camara continuity",
+    "iphone continuity",
+    "same room iphone",
+    "airpods continuity",
+    "windows to windows",
+    "windows rdp microphone",
+    "rdp windows to windows",
+    "microsoft rdp windows",
+    "remote desktop windows only",
+    "fix microphone",
+    "repair microphone",
+    "microphone repair",
+    "reparar micrófono",
+    "microphone driver",
+    "audio driver",
+    "usb microphone",
+    "best usb mic",
+    "blue yeti",
+    "buy microphone",
+    "microphone review",
+    "macbook microphone broken",
+    "internal microphone",
+    "hardware failure",
+    "macbook microphone not working",
+    "imac microphone not working",
+    "built in microphone not working",
+    "internal microphone not working",
+    "laptop microphone not working",
+    "my mac microphone not working",
+    "iphone microphone not working",
+    "micrófono interno no funciona",
+    "micrófono del mac no funciona",
+    "micrófono del macbook no funciona",
+    "micrófono integrado no funciona"
+  ],
+  "sitelinks": [
+    {
+      "text": "How RelayMic works",
+      "desc1": "Install on the remote Mac",
+      "desc2": "Code in, then speak"
+    },
+    {
+      "text": "Early access pricing",
+      "desc1": "$4.99/mo or $49 per year",
+      "desc2": "Includes a 7-day trial"
+    },
+    {
+      "text": "Who it is for",
+      "desc1": "Cloud Macs and Mac minis",
+      "desc2": "Any browser to remote Mac"
+    },
+    {
+      "text": "Privacy and audio",
+      "desc1": "Direct path when possible",
+      "desc2": "0 bytes of audio stored"
+    }
+  ],
+  "callouts": [
+    "Real system microphone",
+    "48 kHz Opus stereo",
+    "Direct path when possible",
+    "0 bytes audio stored",
+    "3 Macs per license",
+    "7-day trial included"
+  ]
+}

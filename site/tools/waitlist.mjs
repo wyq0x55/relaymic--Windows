@@ -23,7 +23,9 @@ function query(sql) {
 const w = (s) => [...String(s ?? '')].reduce((n, c) => n + (/[⺀-鿿＀-￯]/.test(c) ? 2 : 1), 0);
 const pad = (s, n) => String(s ?? '') + ' '.repeat(Math.max(0, n - w(s)));
 
-const [{ total }] = query('SELECT count(*) AS total FROM waitlist');
+const [{ total, tagged }] = query(
+  "SELECT count(*) AS total, sum(gclid IS NOT NULL AND gclid != '') AS tagged FROM waitlist"
+);
 
 if (total === 0) {
   console.log('\n名单还是空的。\n');
@@ -37,7 +39,9 @@ const days = query(`
 `);
 const today = days.find((d) => d.day === new Date().toISOString().slice(0, 10))?.n ?? 0;
 
-console.log(`\n名单 ${total} 条 · 今日 +${today}`);
+// 带 gclid 的条数顺带盯着：投放开了却一直是 0，多半是 Google Ads 那边
+// 没开自动标记（auto-tagging），离线转化导入会因此全盘作废
+console.log(`\n名单 ${total} 条 · 今日 +${today} · 带 gclid ${tagged || 0} 条`);
 
 console.log('\n按天（UTC）');
 for (const d of days) console.log(`  ${d.day}  ${String(d.n).padStart(4)}`);

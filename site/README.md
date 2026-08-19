@@ -71,6 +71,7 @@ npm run waitlist -- --all   # 明细不截断
       详情见下节，将来新开 zone 会再踩一次
 - [x] `hey@relaymic.com` 已能收信：Email Routing 已启用，规则 `hey@ → chshu4@gmail.com`
 - [x] 新邮箱进名单会发通知邮件到 chshu4@gmail.com，见下节
+- [x] 落地页捕获 `gclid` 并入库 —— 投放的转化跟踪靠它，见 `docs/google-ads.md`
 - [ ] Google Search Console 验证 + 提交 `sitemap.xml`
 
 ## 新邮箱通知

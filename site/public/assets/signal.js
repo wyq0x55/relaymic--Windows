@@ -133,6 +133,17 @@
   });
 })();
 
+// Google 的点击 ID 只在落地那一次出现在 URL 上，而访客常常先把页面读完
+// 再回来填表单，中途换个锚点就没了。落地即存，提交时再取。
+// 存的是 Google 自己发的标识，不是我们对访客做的任何跟踪 —— 页面上没有任何
+// 第三方脚本，回传转化是事后在服务端做的。
+(function () {
+  const id = new URLSearchParams(location.search).get('gclid');
+  if (id) {
+    try { sessionStorage.setItem('gclid', id.slice(0, 200)); } catch { /* 隐私模式下写不了，无所谓 */ }
+  }
+})();
+
 // 邮箱订阅：表单在页头和页尾各有一份，同一套逻辑。
 document.querySelectorAll('form[data-signup]').forEach((form) => {
   const note = form.querySelector('[data-note]');
@@ -151,6 +162,7 @@ document.querySelectorAll('form[data-signup]').forEach((form) => {
           email,
           company: form.querySelector('input[name=company]')?.value || '',
           ref: new URLSearchParams(location.search).get('ref') || '',
+          gclid: sessionStorage.getItem('gclid') || '',
         }),
       });
       const data = await res.json().catch(() => ({}));

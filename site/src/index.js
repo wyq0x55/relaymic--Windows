@@ -55,12 +55,15 @@ async function subscribe(request, env, ctx) {
   // 不存 IP，也不存 UA —— 存了就得在隐私政策里交代，而它们对决策没用。
   const country = request.cf?.country ?? null;
   const ref = String(body.ref || '').slice(0, 64) || null;
+  // gclid 是 Google 自动标记发的点击 ID，留着做离线转化导入 —— 页面上因此
+  // 一个第三方脚本都不用装。
+  const gclid = String(body.gclid || '').slice(0, 200) || null;
 
   try {
     const res = await env.DB.prepare(
-      'INSERT OR IGNORE INTO waitlist (email, country, ref) VALUES (?, ?, ?)'
+      'INSERT OR IGNORE INTO waitlist (email, country, ref, gclid) VALUES (?, ?, ?, ?)'
     )
-      .bind(email, country, ref)
+      .bind(email, country, ref, gclid)
       .run();
 
     // changes === 0 说明这个地址已经在名单里了。这不是错误，
