@@ -7,6 +7,9 @@ import { EmailMessage } from 'cloudflare:email';
 
 const EMAIL = /^[^\s@,;:<>()[\]\\]+@[^\s@.,;:<>()[\]\\]+(\.[^\s@.,;:<>()[\]\\]+)+$/;
 
+// 出错时同时给 code 和 error：code 让页面按自己的语言选文案（落地页有英西两版），
+// error 是英文兜底，给直接打接口的人看。文案本身只维护在前端一处。
+
 // 通知的收发地址。收件人在 wrangler.jsonc 的 binding 上也锁了一份 ——
 // 那层锁是硬的，代码写错也发不出去别处。
 const NOTIFY_FROM = 'notify@relaymic.com';
@@ -38,7 +41,7 @@ async function subscribe(request, env, ctx) {
   try {
     body = await request.json();
   } catch {
-    return json({ error: "That didn't come through. Try again." }, 400);
+    return json({ code: 'bad_request', error: "That didn't come through. Try again." }, 400);
   }
 
   // 蜜罐：真人看不见这个字段，脚本会填。填了就假装成功，不落库、不给反馈。
@@ -48,7 +51,7 @@ async function subscribe(request, env, ctx) {
 
   const email = String(body.email || '').trim().toLowerCase();
   if (email.length > 254 || !EMAIL.test(email)) {
-    return json({ error: 'That address looks off — check it and try again.' }, 400);
+    return json({ code: 'bad_email', error: 'That address looks off — check it and try again.' }, 400);
   }
 
   // 只留投流复盘真正要用的三样：地址、来源、国家。
@@ -85,7 +88,7 @@ async function subscribe(request, env, ctx) {
     return json({ ok: true, already });
   } catch (err) {
     console.error('waitlist insert failed', err);
-    return json({ error: "We couldn't save that just now. Try again in a moment." }, 500);
+    return json({ code: 'save_failed', error: "We couldn't save that just now. Try again in a moment." }, 500);
   }
 }
 

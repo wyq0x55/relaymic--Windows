@@ -98,7 +98,8 @@ def main():
     for g in data["ad_groups"]:
         hs = (g["headlines"] + [""] * 15)[:15]
         ds = (g["descriptions"] + [""] * 4)[:4]
-        url = f"https://relaymic.com/?ref={g['final_url_ref']}"
+        # 西语组落到西语页 —— 西语广告点进英文页会同时砸转化率和质量得分
+        url = g.get("final_url") or f"https://relaymic.com/?ref={g['final_url_ref']}"
         rows.append([CAMPAIGN_ID, CAMPAIGN, g["name"], "Responsive search ad"] + hs + ds
                     + [url, g.get("path1", ""), g.get("path2", "")])
     write("ads-rsa.csv", header, rows)

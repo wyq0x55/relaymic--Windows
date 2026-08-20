@@ -347,7 +347,7 @@ var GROUPS = [
   },
   {
     name: "Espanol Mac Remoto",
-    finalUrl: "https://relaymic.com/?ref=es",
+    finalUrl: "https://relaymic.com/es/?ref=es",   // 西语组落到西语页
     keywords: [
       "[micrófono escritorio remoto mac]",
       "\"micrófono escritorio remoto mac\"",

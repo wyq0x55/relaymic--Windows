@@ -10,6 +10,7 @@ public/            静态资源，整站 ~85KB（含自托管字体）
   index.html       落地页
   privacy.html     隐私政策（GDPR）
   terms.html       条款
+  es/              西语版三页，共用同一套 CSS/JS
   _headers         安全响应头与缓存策略
   assets/
     site.css       全部样式
@@ -53,6 +54,21 @@ npm run deploy
 从零重建（换账户之类）时补两步：`npx wrangler d1 create relaymic` 拿到
 database_id 填进 `wrangler.jsonc`，再 `npm run db:init` 建表。
 
+## 西语版
+
+`/es/`、`/es/privacy`、`/es/terms`。存在的理由只有一个：西语广告组点进来不能落到英文页 ——
+着陆页语言和广告语言对不上，转化率和质量得分一起挨罚，而质量得分是**整个广告系列**
+的 CPC，不只是那一组。
+
+三页共用 `site.css` 和 `signal.js`，DOM 结构与英文版逐节对应，改版式时两边一起改。
+西语文本比英文长 15–25%，改动后值得在 390px 宽下看一眼表格和 H1。
+
+表单提示按 `<html lang>` 选文案，表在 `signal.js` 的 `COPY` 里。**服务端不返回人话**，
+出错只返回 `code`（`bad_email` 之类），页面自己查表 —— 否则同一句文案要在
+Worker 和前端各维护一份，改一次得记得改两处。
+
+`hreflang` 三页互指，`sitemap.xml` 里六条 URL 都在。
+
 ## 看名单
 
 ```sh
@@ -65,13 +81,14 @@ npm run waitlist -- --all   # 明细不截断
 
 ## 上线前必须处理
 
-- [x] 数据控制者已写实：Dachun Hui，上海。同时补了第三国传输那节 ——
+- [x] 数据控制者已写实：Shu Chunhui，上海。同时补了第三国传输那节 ——
       控制者在中国、库在 Cloudflare 北美区，GDPR Art. 13(1)(f) 要求明说
 - [x] **Cloudflare Web Analytics 自动注入已关**（`auto_install: false`）。
       详情见下节，将来新开 zone 会再踩一次
 - [x] `hey@relaymic.com` 已能收信：Email Routing 已启用，规则 `hey@ → chshu4@gmail.com`
 - [x] 新邮箱进名单会发通知邮件到 chshu4@gmail.com，见下节
 - [x] 落地页捕获 `gclid` 并入库 —— 投放的转化跟踪靠它，见 `docs/google-ads.md`
+- [x] 西语落地页 `/es/` 已上线，西语广告组指过去（见下节）
 - [ ] Google Search Console 验证 + 提交 `sitemap.xml`
 
 ## 新邮箱通知

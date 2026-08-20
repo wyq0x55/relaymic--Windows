@@ -145,6 +145,31 @@
 })();
 
 // 邮箱订阅：表单在页头和页尾各有一份，同一套逻辑。
+//
+// 文案按页面语言选。服务端不返回人话，只返回一个 code —— 让它同时维护
+// 两套语言的文案，等于把翻译散在两个仓库位置上，改一次要记得改两处。
+const COPY = {
+  en: {
+    sending: 'Sending…',
+    ok: "You're on the list. We'll email you when early access opens.",
+    already: "You're already on the list — we'll email you when it opens.",
+    failed: 'Something went wrong. Try again.',
+    bad_request: "That didn't come through. Try again.",
+    bad_email: 'That address looks off — check it and try again.',
+    save_failed: "We couldn't save that just now. Try again in a moment.",
+  },
+  es: {
+    sending: 'Enviando…',
+    ok: 'Ya estás en la lista. Te escribiremos cuando se abra el acceso anticipado.',
+    already: 'Ya estabas en la lista — te escribiremos cuando se abra.',
+    failed: 'Algo ha fallado. Inténtalo otra vez.',
+    bad_request: 'No ha llegado bien. Inténtalo otra vez.',
+    bad_email: 'Esa dirección no cuadra — revísala e inténtalo otra vez.',
+    save_failed: 'No hemos podido guardarla ahora mismo. Prueba en un momento.',
+  },
+};
+const T = COPY[document.documentElement.lang] || COPY.en;
+
 document.querySelectorAll('form[data-signup]').forEach((form) => {
   const note = form.querySelector('[data-note]');
   const btn = form.querySelector('button');
@@ -152,7 +177,7 @@ document.querySelectorAll('form[data-signup]').forEach((form) => {
     e.preventDefault();
     const email = form.querySelector('input[type=email]').value.trim();
     note.className = 'signup-note';
-    note.textContent = 'Sending…';
+    note.textContent = T.sending;
     btn.disabled = true;
     try {
       const res = await fetch('/api/subscribe', {
@@ -166,11 +191,9 @@ document.querySelectorAll('form[data-signup]').forEach((form) => {
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || 'Something went wrong. Try again.');
+      if (!res.ok) throw new Error(T[data.code] || data.error || T.failed);
       note.className = 'signup-note is-ok';
-      note.textContent = data.already
-        ? "You're already on the list — we'll email you when it opens."
-        : "You're on the list. We'll email you when early access opens.";
+      note.textContent = data.already ? T.already : T.ok;
       form.querySelector('input[type=email]').value = '';
     } catch (err) {
       note.className = 'signup-note is-err';
