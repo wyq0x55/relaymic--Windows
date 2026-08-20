@@ -12,6 +12,10 @@ import csv, json, sys, pathlib
 HERE = pathlib.Path(__file__).parent
 CAMPAIGN = "RelayMic - Search - Test"   # 用 ASCII 连字符：en dash 在后台里不好输入，也容易在转码时出岔
 
+# 批量上传靠数字 ID 定位已存在的广告系列 —— 只给名字会整表报
+# "Missing value in Campaign ID"。这个 ID 在广告系列创建后从后台 URL 里取。
+CAMPAIGN_ID = "24156845915"
+
 # Google Ads 的硬上限（按 Unicode 字符数，不是字节）
 LIMITS = {"headline": 30, "description": 90, "callout": 25, "sitelink_text": 25, "sitelink_desc": 35}
 
@@ -76,17 +80,17 @@ def main():
     rows = []
     for g in data["ad_groups"]:
         for k in g["keywords"]:
-            rows.append([CAMPAIGN, g["name"], k["text"], k["match"].capitalize()])
-    write("keywords.csv", ["Campaign", "Ad Group", "Keyword", "Criterion Type"], rows)
+            rows.append([CAMPAIGN_ID, CAMPAIGN, g["name"], k["text"], k["match"].capitalize()])
+    write("keywords.csv", ["Campaign ID", "Campaign", "Ad Group", "Keyword", "Criterion Type"], rows)
 
     # 否定关键词：广告系列级 + 广告组级
-    rows = [[CAMPAIGN, "", n, "Campaign Negative Phrase"] for n in data.get("campaign_negatives", [])]
+    rows = [[CAMPAIGN_ID, CAMPAIGN, "", n, "Campaign Negative Phrase"] for n in data.get("campaign_negatives", [])]
     for g in data["ad_groups"]:
-        rows += [[CAMPAIGN, g["name"], n, "Negative Phrase"] for n in g.get("negatives", [])]
-    write("negatives.csv", ["Campaign", "Ad Group", "Keyword", "Criterion Type"], rows)
+        rows += [[CAMPAIGN_ID, CAMPAIGN, g["name"], n, "Negative Phrase"] for n in g.get("negatives", [])]
+    write("negatives.csv", ["Campaign ID", "Campaign", "Ad Group", "Keyword", "Criterion Type"], rows)
 
     # 响应式搜索广告：每组一条，标题/描述各占一列
-    header = (["Campaign", "Ad Group", "Ad type"]
+    header = (["Campaign ID", "Campaign", "Ad Group", "Ad type"]
               + [f"Headline {i}" for i in range(1, 16)]
               + [f"Description {i}" for i in range(1, 5)]
               + ["Final URL", "Path 1", "Path 2"])
@@ -95,7 +99,7 @@ def main():
         hs = (g["headlines"] + [""] * 15)[:15]
         ds = (g["descriptions"] + [""] * 4)[:4]
         url = f"https://relaymic.com/?ref={g['final_url_ref']}"
-        rows.append([CAMPAIGN, g["name"], "Responsive search ad"] + hs + ds
+        rows.append([CAMPAIGN_ID, CAMPAIGN, g["name"], "Responsive search ad"] + hs + ds
                     + [url, g.get("path1", ""), g.get("path2", "")])
     write("ads-rsa.csv", header, rows)
 
