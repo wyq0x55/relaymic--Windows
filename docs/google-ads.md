@@ -20,19 +20,53 @@
 | `ads/keywords.csv` | 84 条关键词（42 个词 × 词组/完全两种匹配） |
 | `ads/negatives.csv` | 55 条否定关键词 |
 | `ads/ads-rsa.csv` | 5 组响应式搜索广告（每组 15 标题 + 4 描述） |
+| `ads/load-campaign.js` | **实际用来灌账户的 Google Ads Script**，见下节 |
 | `ads/export-conversions.py` | 把邮箱转化回传给 Google（见「转化跟踪」一节） |
 
-### 导入步骤
+### 怎么灌进账户：用 Scripts，不要用 CSV 上传
 
-1. 装 **Google Ads Editor**（免费桌面端），登录账户
-2. 账户 → 导入 → 从文件导入，依次导 `keywords.csv`、`ads-rsa.csv`、`negatives.csv`
-3. 检查预览里没有报错行，再点「发布」
+**`ads/load-campaign.js` 是实际走通的那条路。** 在后台
+`Tools → Bulk actions → Scripts`（URL 是 `/aw/bulk/scripts/management`，直接拼
+`/aw/bulk/scripts` 会 404）新建脚本，粘贴全文，**先 Preview 再 Run**。
+第一次跑要点一次 Authorize 授权。
 
-**不要手改生成出来的 CSV。** 改 `campaign.json` 然后重跑 `python3 ads/build.py` ——
-字符超限会在这一步被拦下，而 Editor 只会告诉你「某行有问题」。
+脚本是幂等的：已存在的广告组、关键词会跳过，广告组里已有广告就不再建 RSA，
+也不碰广告系列的启停。改错了重跑一遍就行，不会灌出两份。
+
+实测一次跑完：4 个广告组、68 条关键词、4 条 RSA、55 条广告系列否定词，145 项成功。
+
+**CSV 批量上传这条路是死的，别再试。** `ads/*.csv` 现在只当人读的对照表和
+`build.py` 的校验产物用。踩过的两个坑：
+
+1. 缺 `Campaign ID` 列 → 84 条 "Missing value in Campaign ID"。加上列还能过
+2. 加上之后 → 68 条 "The entity does not exist for 'Ad group: ...'"。
+   **批量上传不会创建广告组**，只能往已存在的组里加东西。而广告组要手建 5 个，
+   建完还得回来重跑 —— 到这一步 Scripts 已经全面占优
+
+**不要手改生成出来的 CSV，也不要手改脚本里的文案。** 两边的文案都源自
+`campaign.json`：改它，重跑 `python3 ads/build.py`，字符超限会在这一步被拦下。
 
 字符上限是硬的：标题 30、描述 90、附加标题 25、站点链接文字 25 / 描述 35。
 `build.py` 逐条按 Unicode 字符数校验，顺带拦感叹号和全大写词（Google 会拒登）。
+
+### 地区只能在界面里设
+
+`campaign.addLocation()` 在这个账户上三种写法全失败 —— 传数字 ID、传国家名、
+传 `{ id: 2826 }` 都不行（前两个 InputError，第三个格式收了但仍报 "An error occurred"）。
+根因是广告系列建出来时挂在 **「United States and Canada」这个预设选项**上，
+不是自定义地区列表，预设 Scripts 改不动。
+
+界面里的路径（走通了，9 个国家一次搞定）：
+
+```
+广告系列设置 → Locations → Enter another location → Advanced search
+→ Add locations in bulk → 贴国家名（一行一个）→ Target all → 保存
+```
+
+保存时会弹一次「EU political ads」确认，选「不含」再 Apply。
+
+`load-campaign.js` 里的 `checkLocations()` 因此只核对不写入 —— 缺哪个国家会打日志，
+补还是得去界面补。
 
 ---
 
@@ -180,7 +214,7 @@ CSP 会直接把它拦下 —— 重演一遍 beacon 那出戏。
 总预算 ¥1000（≈$140），两周，日预算 $10 封顶。这是**通过/不通过测试**，不是
 放量campaign —— 目标是拿到判断依据，不是拿到用户。
 
-- **出价策略：手动 CPC 起步**，不要一上来就智能出价。新账户没有转化历史，
+- **出价策略：手动 CPC 起步**，不要一上来就转化型智能出价。新账户没有转化历史，
   智能出价会拿你的预算去学习，而两周 ¥1000 学不出东西
 - 首次出价上限 $1.50。niche 词的竞争通常不激烈，实际 CPC 大概率低得多
 - **只投搜索网络**。展示网络、搜索伙伴、Performance Max 全部关掉 ——
@@ -188,6 +222,12 @@ CSP 会直接把它拦下 —— 重演一遍 beacon 那出戏。
 - 地区：先投 美国 / 加拿大 / 英国 / 澳大利亚 / 德国 / 荷兰（英文组），
   西班牙 / 墨西哥 / 阿根廷（西语组）。避开印度、东南亚 —— 不是这个价位的客群
 - 语言按广告组的语言设，别混
+
+**账户实际是 Maximize clicks，不是手动 CPC。**（建广告系列时选的，脚本里那个
+`CPC = 1.5` 因此只是广告组的默认出价，不生效。）这不算错 —— 它不依赖转化历史，
+小预算下比 tCPA 稳 —— 但它默认没有出价上限，为了把 $10 花完会去买贵点击。
+**开投前二选一**：改回手动 CPC，或者给 Maximize clicks 设一个 $1.50 的
+「最高每次点击费用出价上限」。别就这么裸奔着开。
 
 ## 归因：?ref= 与 gclid 并存
 
@@ -198,13 +238,24 @@ gclid 由 Google 自动加在 URL 后面，和 ref 并存，互不冲突。
 
 ## 开投前检查清单
 
-- [ ] 落地页捕获并存储 `gclid`（见上，**必须先做**）
-- [ ] Google Ads 账户开启自动标记（auto-tagging），否则没有 gclid
-- [ ] 关掉搜索伙伴、展示网络扩展
-- [ ] 日预算设 $10，且在账户层面设一个总额提醒
-- [ ] 每个广告组的最终 URL 带对了自己的 `?ref=`
-- [ ] 用 Google Ads 的广告预览工具确认广告真的出得来（别用自己搜，会烧展示次数还不准）
-- [ ] 落地页在手机上打开正常（一半以上的搜索流量来自手机）
+截至 2026-08-20 的实际状态（打勾的都在后台核对过，不是"应该没问题"）：
+
+- [x] 落地页捕获并存储 `gclid`（见上，**必须先做**）
+- [x] 账户自动标记开着（Admin → Account settings → Auto-tagging: Yes），否则没有 gclid
+- [x] 搜索伙伴、展示网络都没勾（Networks 只有 Google search）
+- [x] 日预算 $10
+- [x] 每个广告组的最终 URL 带对了自己的 `?ref=`
+- [x] 5 个广告组各 1 条我们的 RSA，Google 自动生成的那条已删（它把产品说反了：
+      "captures audio from the remote machine's microphone" —— 正好是反过来的）
+- [x] 地区 9 个国家、语言英语+西语（在界面里设的，见上节）
+- [x] Auto-apply 关着 —— 开着的话 Google 会自动改我们的文案和关键词
+- [ ] **出价策略要拍板**（见上节：手动 CPC，或给 Maximize clicks 加 $1.50 上限）
+- [ ] **账户层面的欧盟政治广告声明还没做**（Admin → Policy → Account 里那个待办）。
+      投德国 / 荷兰 / 西班牙就是投欧盟，不确认可能限制展示。广告系列那层已经答过"不含"
+- [ ] Data protection contacts 是 None，投欧盟建议填上
+- [ ] 广告过审后，用 Google Ads 的广告预览工具确认真的出得来
+      （别用自己搜，会烧展示次数还不准）
+- [x] 落地页在手机上打开正常（一半以上的搜索流量来自手机）
 
 ## 每天看什么
 

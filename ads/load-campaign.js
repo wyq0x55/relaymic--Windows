@@ -13,7 +13,7 @@ function main() {
   var campaign = it.next();
   Logger.log('广告系列：' + campaign.getName() + '（' + campaign.getId() + '）');
 
-  addLocations(campaign);
+  checkLocations(campaign);
   addCampaignNegatives(campaign);
   GROUPS.forEach(function (g) { buildGroup(campaign, g); });
   Logger.log('完成。');
@@ -66,15 +66,24 @@ function buildGroup(campaign, g) {
   Logger.log(adOp.isSuccessful() ? '  RSA 已建' : '  RSA 失败：' + adOp.getErrors().join('; '));
 }
 
-function addLocations(campaign) {
+// 地区只核对，不设置 —— 这里不是偷懒，是 Scripts 写不进去。
+//
+// campaign.addLocation() 三种写法全失败：
+//   addLocation(2826)             → InputError
+//   addLocation("United Kingdom") → InputError，提示要 TargetedLocation 或 { id, bidModifier }
+//   addLocation({ id: 2826 })     → 格式收了，照样 "An error occurred"
+// 根因是广告系列当时挂在「United States and Canada」这个预设选项上而不是自定义地区列表，
+// 预设 Scripts 改不动。只能在界面里改一次：广告系列设置 → Locations → Enter another
+// location → Advanced search → Add locations in bulk，贴国家名 → Target all → 保存。
+// 设完就不用再动，所以这里只负责发现它没设。
+function checkLocations(campaign) {
   var have = {};
   var it = campaign.targeting().targetedLocations().get();
-  while (it.hasNext()) { have[it.next().getId()] = true; }
-  var n = 0;
-  LOCATION_IDS.forEach(function (id) {
-    if (!have[id]) { campaign.addLocation(id); n++; }
-  });
-  Logger.log('地区 +' + n);
+  while (it.hasNext()) { have[String(it.next().getId())] = true; }
+  var missing = LOCATIONS.filter(function (l) { return !have[String(l.id)]; });
+  Logger.log(missing.length
+    ? '地区缺 ' + missing.length + ' 个，去界面补：' + missing.map(function (l) { return l.name; }).join('、')
+    : '地区 ' + LOCATIONS.length + ' 个齐了');
 }
 
 function addCampaignNegatives(campaign) {
@@ -89,7 +98,17 @@ function addCampaignNegatives(campaign) {
   Logger.log('广告系列否定词 +' + n);
 }
 
-var LOCATION_IDS = [2840, 2124, 2826, 2036, 2276, 2528, 2724, 2484, 2032];  // United States、Canada、United Kingdom、Australia、Germany、Netherlands、Spain、Mexico、Argentina
+var LOCATIONS = [
+  { id: 2840, name: 'United States' },
+  { id: 2124, name: 'Canada' },
+  { id: 2826, name: 'United Kingdom' },
+  { id: 2036, name: 'Australia' },
+  { id: 2276, name: 'Germany' },
+  { id: 2528, name: 'Netherlands' },
+  { id: 2724, name: 'Spain' },
+  { id: 2484, name: 'Mexico' },
+  { id: 2032, name: 'Argentina' },
+];
 
 var NEGATIVES = [
   "free",
