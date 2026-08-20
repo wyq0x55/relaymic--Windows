@@ -273,6 +273,56 @@ gclid 由 Google 自动加在 URL 后面，和 ref 并存，互不冲突。
 - [x] 西语组的最终 URL 已改成 `https://relaymic.com/es/?ref=es`
       （编辑广告会触发 Google 的身份验证，改完那条广告重新进审核）
 
+## 开投前查到的事：这些词几乎没有搜索量
+
+2026-08-20，素材全部就位、准备开投时，顺手筛了一下关键词状态，结果值得单独记一节：
+
+**后台判定 82 条关键词里 68 条是 `Low search volume`**（Google 的原话是「这个词在
+Google 上几乎没有搜索历史，在搜索量上升前不具备展示资格」），只剩 14 条能跑。
+
+用 DataForSEO 查了真实月搜索量（美国），确认不是后台误判：
+
+| 关键词 | 月搜索量 |
+| --- | --- |
+| remote desktop audio | 70 |
+| remote desktop microphone | 20 |
+| remote desktop mic | 20 |
+| parsec microphone | 20 |
+| rdp microphone | 10 |
+| teamviewer microphone | 10 |
+| anydesk microphone | 10 |
+| microphone redirection | 无数据 |
+
+`campaign.json` 里那 30 个英文词（全是「mac + 麦克风 + 远程」的组合）**搜索量字段
+全部为空**。换一批完全不同的表述再查一轮（speak through remote desktop、
+use my mic on remote computer、vps microphone、azure virtual desktop microphone…），
+15 个词里只有 `remote desktop voice` 有 10 次/月。
+
+对照组正常：`teamviewer` 165,000、`remote desktop` 110,000、`mac remote desktop` 2,400。
+**不是这个领域没人搜，是「麦克风传不过去」这个痛点没人搜。**
+
+### 这说明什么，不说明什么
+
+说明的：**搜索广告这个渠道不成立**。相关词加起来约 170 次/月，我们能覆盖的乐观算
+100 次/月，两周约 50 次搜索 → 约 35 次展示 → 2–4 次点击。¥1000 不是花不够，是花不出去。
+
+不说明的：**需求不存在**。搜索广告只捞「已经在主动找解决方案的人」。这个问题的特点是
+用户不知道有解——麦克风传不过去，多数人的反应是忍了或改用手机，不会去搜
+`microphone passthrough remote desktop mac`。这类需求搜索广告天生抓不到，
+但它会在竞品论坛的功能请求帖、Reddit、Stack Overflow 里留下痕迹。
+
+### 于是改成 3 天验证
+
+没有直接砍掉，而是**用钱买事实**：开投 3 天，只看展示量，验证上面那个推算对不对。
+
+- 广告系列 **结束日期设成 2026-08-23**，到期自动停 —— 不依赖谁记得关
+- 成本上限 $10/天 × 3 天 = $30，但按推算实际花不到 $10
+- **判据：3 天累计展示量 < 30 次，就是「广告触达不了」的答案**，停，把剩下的预算
+  留给别的验证方式
+
+设结束日期而不是靠人记着停，是因为「预算封顶就是封顶」这条纪律要有机制保证，
+不能靠自觉。
+
 ## 每天看什么
 
 一天看一次就够，不要一小时刷一次 —— 数据量小的时候，短时波动全是噪声。
