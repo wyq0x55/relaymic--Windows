@@ -89,7 +89,11 @@ npm run waitlist -- --all   # 明细不截断
 - [x] 新邮箱进名单会发通知邮件到 chshu4@gmail.com，见下节
 - [x] 落地页捕获 `gclid` 并入库 —— 投放的转化跟踪靠它，见 `docs/google-ads.md`
 - [x] 西语落地页 `/es/` 已上线，西语广告组指过去（见下节）
-- [ ] Google Search Console 验证 + 提交 `sitemap.xml`
+- [x] Google Search Console 已验证（Domain 属性 `sc-domain:relaymic.com`），
+      `sitemap.xml` 已提交，Google 读到 6 条 URL（英西各三页）。
+      验证方式是 Domain Connect —— Google 经授权往 Cloudflare 写了一条
+      `google-site-verification=` 的 TXT。想收回授权就去 Cloudflare 那边断开连接，
+      TXT 留着，验证不受影响
 
 ## 新邮箱通知
 
