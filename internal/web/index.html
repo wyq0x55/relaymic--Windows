@@ -96,6 +96,13 @@
   .conn .rtt { color: var(--dim); font-variant-numeric: tabular-nums; min-width: 52px; text-align: right; }
   .empty { color: var(--dim); }
   .ok { color: var(--ok); } .warn { color: var(--warn); } .err { color: var(--err); }
+  .src {
+    margin-top: 28px;
+    text-align: center;
+    font-size: 12px;
+    opacity: .45;
+  }
+  .src a { color: inherit; }
 </style>
 </head>
 <body>
@@ -110,6 +117,13 @@
 
   <div id="micstate" class="micstate"></div>
   <div id="conns" class="conns"><div class="empty">未连接</div></div>
+
+  <!-- AGPL-3.0 第 13 条：通过网络与本程序交互的用户，必须能拿到对应版本的源码。
+       发送端就是这个网页，所以链接放在这儿，不是可选的装饰。
+       你要是改了这份代码再给别人用，请把这个链接指向你自己那份。 -->
+  <footer class="src">
+    RelayMic · <a href="https://github.com/hueshu/relaymic" target="_blank" rel="noopener">源码 (AGPL-3.0)</a>
+  </footer>
 </main>
 
 <script>

@@ -1,120 +1,134 @@
 # RelayMic
 
-**把任意设备浏览器里的麦克风，变成一台远程 Mac 上的系统输入设备。**
+> **English** · [中文](README.zh-CN.md)
 
-远程桌面转发你的画面、键盘、鼠标——不转发你的声音。Windows 的 RDP 有麦克风重定向，
-但对端是 Mac 时，市面上每一个远程工具都没有这个功能。不是藏在某个菜单里，是不存在。
+**Turn the microphone in any device's browser into a system input device on a remote Mac.**
 
-RelayMic 补的就是这一段。
+Remote desktop forwards your screen, your keyboard and your mouse — not your voice. Windows has
+had microphone redirection since RDP shipped it. But the moment the machine on the other end is a
+Mac, that feature is gone from every tool on the market. Not hidden in a menu. Not there.
+
+RelayMic fills that gap.
 
 ```
-你面前的设备（任意浏览器）
-  ↓  采集麦克风 → Opus 48kHz 立体声
-  ↓  WebRTC 加密传输（优先直连，打不通走 TURN 中继）
-远程的 Mac
-  ↓  解码 → 抖动缓冲 → 写入 BlackHole 虚拟音频设备
-Zoom / 听写 / Audacity / 任何应用 —— 当成普通麦克风读
+The device in front of you (any browser)
+  ↓  captures the mic → Opus 48 kHz stereo
+  ↓  encrypted WebRTC (direct when possible, TURN relay when not)
+The remote Mac
+  ↓  decode → jitter buffer → write into a virtual audio device
+Zoom / dictation / Audacity / anything — reads it as an ordinary microphone
 ```
 
-它**不替代**你的远程桌面软件，和 TeamViewer、AnyDesk、Parsec、RustDesk、Jump Desktop
-并行跑，那些工具继续管画面和输入，不知道也不需要知道 RelayMic 的存在。
+It does **not** replace your remote desktop tool. It runs alongside TeamViewer, AnyDesk, Parsec,
+RustDesk, Jump Desktop, ToDesk — those keep doing screen and input, unaware anything changed.
 
-## 远程连到 Mac 时，谁能传你的麦克风
+## Who can forward your microphone to a Mac
 
-| 工具 | 画面 / 键鼠 | 你的麦克风 |
+| Tool | Screen / input | Your microphone |
 |---|---|---|
-| TeamViewer | ✅ | ❌ 用的是那台 Mac 自己的麦克风 |
+| TeamViewer | ✅ | ❌ picks up the Mac's own mic instead |
 | AnyDesk | ✅ | ❌ |
 | Parsec | ✅ | ❌ |
 | RustDesk | ✅ | ❌ |
 | Jump Desktop | ✅ | ❌ |
-| macOS 屏幕共享 | ✅ | ❌ |
-| Microsoft RDP（且对端是 Windows） | ✅ | ✅ 系统自带，但止步于 Windows |
-| **RelayMic** | 交给你的远程工具 | ✅ 作为系统输入设备 |
+| ToDesk | ✅ | ❌ has mic mapping, but the controlled end must be Windows |
+| macOS Screen Sharing | ✅ | ❌ |
+| Microsoft RDP *(far end is Windows)* | ✅ | ✅ built in — and it stops at Windows |
+| **RelayMic** | leaves that to your remote tool | ✅ as a system input device |
 
-## 安装
+The pattern is simple: **when the controlled machine runs Windows, your mic usually gets through;
+when it runs macOS, nothing does.**
 
-**把这个仓库交给你的 AI 助手，让它读 [`SETUP.md`](SETUP.md)。**
+## Install
 
-Claude Code、Codex、Cursor 都行。它会装依赖、编译、跑起来，然后教你怎么用。你不用
-自己敲命令。
+**Hand this repository to your AI assistant and tell it to read [`SETUP.md`](SETUP.md).**
 
-```
-克隆下来，然后对你的 AI 说：
-「照着 SETUP.md 把 RelayMic 装好，装完教我怎么用。」
-```
-
-`SETUP.md` 是按 AI 能直接执行的方式写的：每步都有验证方法，失败了有排查表。
-
-想自己动手也可以，那份文档人也读得懂。大致是：两端装 Tailscale 组网 →
-Mac 上 `brew install opus && brew install --cask blackhole-2ch` →
-`go build -tags nolibopusfile ./cmd/receiver` → 跑起来 → 在另一台设备的浏览器打开
-`https://<mac 的 tailnet IP>:7420`。
-
-## 现状
-
-**这是作者自用工具的开源版本，不是打磨过的消费级产品。**
-
-- 命令行启动，没有图形界面，没有安装包
-- 界面和日志文案目前是中文
-- **需要先组网**：当前版本没有公网信令服务器，发送端浏览器必须能直接访问
-  Mac 的 `7420` 端口。实际方案是 **Tailscale**（免费，两端装完各自拿一个稳定的
-  `100.x.x.x`，7420 直达、WebRTC 也在虚拟网内直连）。国内家宽普遍在运营商级 NAT
-  后面，没有公网 IP，端口映射和 DDNS 都救不了——这条路走不通
-- Mac 上的输入设备显示为 `BlackHole 2ch`，不叫 RelayMic
-
-但**音频链路本身经过长期实战**——作者三台 Mac 日常在用。下面这些参数都是踩坑换来的，
-不建议"优化"：
-
-- **抖动缓冲 150ms**：实测值。局域网上 20ms 很爽，酒店 Wi-Fi 上立刻断续
-- **静音抑制（DTX）默认关**：它省带宽，代价是削掉轻声说话的词头，听写会丢第一个音节
-- **三路诊断录音**：处理前、缓冲后、从虚拟设备读回。"听着不对"能变成一段可以指着看
-  的波形
-
-延迟大致等于一通电话：网络往返 + 150ms 缓冲。适合说话、听写、开会；不适合录音时
-监听自己的声音。
-
-## 你可能不需要它
-
-- **同一个房间里的 iPhone 想当 Mac 的麦克风** → Apple 的连续互通麦克风是免费的
-- **Windows 连 Windows** → RDP 自带麦克风重定向，免费
-- RelayMic 解决的是**距离**：不同建筑、不同城市、不同国家
-
-## 隐私
-
-音频走 WebRTC 加密的点对点连接。能直连时完全不经过任何第三方；打不通需要中继时，
-中继只转发加密包。
-
-**没有作者运营的服务器参与，也就无从记录。** TURN 是你自己配的。代码在这里，可以
-自己核对——这也是开源的意义之一：处理你声音的东西，说"我不存储"不如让你自己看。
-
-## 仓库结构
+Claude Code, Codex, Cursor — any of them. It installs the dependencies, builds, gets it running,
+and then teaches you how to use it. You don't type the commands yourself.
 
 ```
-cmd/receiver     Mac 接收端：收流、解码、写入虚拟设备、提供网页发送端
-cmd/sender       命令行发送端
-cmd/sender-gui   Windows 图形发送端（已冻结，网页版已覆盖）
-cmd/probe,selfcheck,stuncheck,turncheck   诊断工具
-internal/audio   音频设备与处理链
-internal/rtc     WebRTC 收发
-internal/sender  发送端引擎
-internal/web     网页发送端（嵌入二进制）
-site/            relaymic.com 落地页（Cloudflare Workers）
-docs/            设计与决策记录
+Clone it, then tell your AI:
+"Follow SETUP.md to install RelayMic, then teach me how to use it."
 ```
 
-## 不打算做的事
+`SETUP.md` is written for an AI to execute: every step has a verification, every failure has a
+troubleshooting entry.
 
-这些都认真考虑过并否决了，写下来是为了省掉重复讨论：
+Doing it by hand works too — that document reads fine for humans. Roughly: put both machines on
+Tailscale → on the Mac, `brew install opus && brew install --cask blackhole-2ch` →
+`go build -tags nolibopusfile ./cmd/receiver` → run it → open
+`https://<mac's tailnet IP>:7420` in a browser on the other device.
 
-- **Windows 原生发送端的新功能**。网页发送端已经覆盖了同样的场景，`cmd/sender-gui`
-  冻结在当前状态
-- **Windows → Windows**。微软的 RDP 自带麦克风重定向，免费且更好用，没有理由重做
-- **同屋 iPhone → Mac 主打这个场景**。Apple 的连续互通麦克风免费，打不过也没必要打
-- **改动音频链的实测参数**。缓冲 150ms、DTX 关闭、增益渐变门、拉伸回补——每一个都是
-  某次故障之后调出来的。看着像可以优化的地方，多半是别人已经踩过的坑
+## What this is, honestly
 
-## 构建
+**This is the author's own tool, opened up — not a polished consumer product.**
+
+- Command line, no GUI, no installer
+- UI strings and logs are currently in Chinese
+- **You need to set up a network first.** There is no public signalling server in this version,
+  so the sending browser must reach the Mac's port `7420` directly. In practice that means
+  **Tailscale** (free — both ends get a stable `100.x.x.x`, port 7420 is directly reachable, and
+  WebRTC connects inside that virtual network). Consumer broadband in many countries sits behind
+  carrier-grade NAT with no public IP at all, where port forwarding and DDNS cannot help
+- The input device on the Mac shows up as `BlackHole 2ch`, not "RelayMic"
+
+But **the audio path itself has been in daily use** — three Macs, every day. The parameters below
+are what they are because something broke without them, and "optimizing" them is not advised:
+
+- **150 ms jitter buffer** — measured, not guessed. 20 ms sounds brilliant on a LAN and stutters
+  the first time you use hotel Wi-Fi
+- **Silence suppression (DTX) off by default** — it saves bandwidth by clipping the front of
+  quietly spoken words, and dictation loses the first syllable
+- **Three diagnostic recording taps** — before processing, after the buffer, and read back out of
+  the virtual device. "It sounded bad" becomes a waveform you can point at
+
+Latency is roughly a phone call: network round trip plus that 150 ms buffer. Built for talking,
+dictating and meetings; not for monitoring yourself while recording music.
+
+## You might not need it
+
+- **An iPhone in the same room as the Mac** → Apple's Continuity Microphone is free
+- **Windows to Windows** → RDP already redirects your mic, free
+- RelayMic is for **distance**: different building, different city, different country
+
+## Privacy
+
+Audio travels over an encrypted peer-to-peer connection. When it can connect directly, nothing
+passes through a third party at all; when two networks refuse, it falls back to a TURN relay —
+**one you configure and control**.
+
+**No server of the author's is in the path, so there is nothing on our side that could listen.**
+The code is here — read it. That is part of why a tool that handles your voice should be open
+source: "we don't store it" is worth less than being able to check.
+
+## Layout
+
+```
+cmd/receiver     Mac receiver: takes the stream, decodes, writes to the virtual device,
+                 and serves the web sender
+cmd/sender       command-line sender
+cmd/sender-gui   Windows GUI sender (frozen — the web sender covers it)
+cmd/probe, selfcheck, stuncheck, turncheck   diagnostics
+internal/audio   audio devices and processing chain
+internal/rtc     WebRTC send/receive
+internal/sender  sender engine
+internal/web     web sender (embedded in the binary)
+site/            relaymic.com landing page (Cloudflare Workers)
+docs/            design and decision records
+```
+
+## Not planned
+
+Each of these was considered and rejected; writing them down saves the discussion:
+
+- **New features in the native Windows sender.** The web sender covers the same ground;
+  `cmd/sender-gui` is frozen where it is
+- **Windows → Windows.** Microsoft's RDP redirects the microphone already, free and better
+- **Same-room iPhone → Mac as the main use case.** Apple's Continuity Microphone is free
+- **Changing the measured audio parameters.** Buffer depth, DTX, the gain gate, stretch
+  compensation — each one came out of a specific failure
+
+## Build
 
 ```bash
 brew install opus
@@ -122,12 +136,20 @@ go build -tags nolibopusfile ./...
 go test  -tags nolibopusfile ./internal/...
 ```
 
-`-tags nolibopusfile` 是必须的——只用编解码，不读 `.opus` 文件，不加会去链接
-libopusfile 然后失败。
+`-tags nolibopusfile` is required — the project only uses the codec, never reads `.opus` files,
+and without the tag the build tries to link libopusfile and fails.
 
-## 许可
+## License
 
-[MIT](LICENSE)
+[AGPL-3.0](LICENSE).
 
-BlackHole 是独立的开源项目（MIT），RelayMic 引导你用 Homebrew 安装官方包，
-不捆绑分发。
+You may run, study, modify and share it, including commercially. But if you distribute a modified
+version **or let people use one over a network**, you owe those people the complete source of
+your version under the same license — running a modified copy on a server counts, even without
+handing out a binary.
+
+If you need to build something closed-source on top of this, the copyright is mine to license
+differently: <hey@relaymic.com>.
+
+BlackHole is a separate open-source project (MIT). RelayMic points you at its official Homebrew
+package rather than bundling a copy.
