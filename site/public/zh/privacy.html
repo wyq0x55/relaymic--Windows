@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>隐私 — RelayMic</title>
+<meta name="description" content="这个网站什么都不收集。这句话是什么意思，以及你的声音去了哪里。">
+<link rel="canonical" href="https://relaymic.com/zh/privacy">
+<link rel="alternate" hreflang="en" href="https://relaymic.com/privacy">
+<link rel="alternate" hreflang="es" href="https://relaymic.com/es/privacy">
+<link rel="alternate" hreflang="zh" href="https://relaymic.com/zh/privacy">
+<link rel="alternate" hreflang="x-default" href="https://relaymic.com/privacy">
+<meta name="robots" content="index, follow">
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="/zh/">
+      <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+      RelayMic
+    </a>
+    <a class="btn" href="/zh/">返回首页</a>
+  </div>
+</header>
+
+<main class="wrap doc">
+  <h1>隐私</h1>
+  <p class="updated">最后更新：2026 年 8 月 22 日</p>
+
+  <h2>这个网站什么都不收集</h2>
+  <p>
+    没有 Cookie。没有统计脚本。没有表单。没有第三方字体、埋点或嵌入内容 ——
+    字体是从本域名发出来的。除了托管方 Cloudflare 为了发出一个文件所必需、且随即丢弃的那些，什么都不记录。
+  </p>
+  <p>
+    没有账号要注册，没有邮箱要留，这个页面背后也没有数据库。早期版本有过一个收邮箱的等待名单表单，项目转为开源时连同它背后的名单一起删掉了。
+  </p>
+
+  <h2>你的声音</h2>
+  <p>
+    这才是大多数人真正想问的。
+  </p>
+  <p>
+    RelayMic 在你的浏览器和你的 Mac 之间直接传音频，走的是加密的点对点连接。两边网络实在打不通时，会退回 TURN 中继 —— <strong>而那个中继是你自己配置、自己掌握的</strong>。整条链路上没有我们的任何服务器。
+  </p>
+  <p>
+    这比"承诺不看"要强：<strong>我们想看也看不到</strong>，因为路径上根本没有我们的东西。而且这些你都不必信我们 ——
+    <a href="https://github.com/hueshu/relaymic">代码是公开的</a>，自己去看。一个要处理你声音的工具，开源的意义正在于此。
+  </p>
+  <p>
+    你可能读到过的那几路诊断录音是本地功能：写在你自己的 Mac 上，留在那儿，删不删由你。
+  </p>
+
+  <h2>谁做的这个东西</h2>
+  <p>
+    RelayMic 由 <strong>Shu Chunhui</strong> 编写，独立开发者，常驻上海，联系方式 <a href="mailto:hey@relaymic.com">hey@relaymic.com</a>。
+  </p>
+  <p>
+    你给这个地址写信，消息当然会到一个真人手里 —— 这是你的个人信息唯一可能到达我们这里的途径，而且只因为你主动发了。它不会被加进任何名单。
+  </p>
+
+  <h2>变更</h2>
+  <p>
+    如果哪天上面这些不再成立，这一页会先改，而且改动会明明白白留在这个网站公开的 git 历史里。
+  </p>
+</main>
+
+<footer class="wrap foot">
+  <span>&copy; 2026 RelayMic</span>
+  <a href="/zh/">首页</a>
+  <a href="/zh/terms">条款</a>
+  <a href="https://github.com/hueshu/relaymic">GitHub</a>
+  <a href="/privacy" hreflang="en">English</a>
+</footer>
+
+</body>
+</html>

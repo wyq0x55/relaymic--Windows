@@ -28,6 +28,15 @@
 /es/terms
   Cache-Control: no-transform, public, max-age=0, must-revalidate
 
+/zh/
+  Cache-Control: no-transform, public, max-age=0, must-revalidate
+
+/zh/privacy
+  Cache-Control: no-transform, public, max-age=0, must-revalidate
+
+/zh/terms
+  Cache-Control: no-transform, public, max-age=0, must-revalidate
+
 # 规则是累加的，路径不能重叠 —— 用 /assets/* 兜底会让字体同时收到两个
 # Cache-Control，浏览器取哪个不好说，长缓存就白设了。
 /assets/fonts/*
