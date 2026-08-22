@@ -1,4 +1,4 @@
-module github.com/hueshu/remotemic
+module github.com/hueshu/relaymic
 
 go 1.26.6
 

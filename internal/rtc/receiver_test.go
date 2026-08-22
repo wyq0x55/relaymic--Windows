@@ -10,7 +10,7 @@ import (
 
 func TestIsCGNAT(t *testing.T) {
 	cases := map[string]bool{
-		"100.113.115.89":  true,  // Tailscale
+		"100.100.100.100": true,  // Tailscale
 		"100.64.0.0":      true,  // 段首
 		"100.127.255.255": true,  // 段尾
 		"100.63.255.255":  false, // 段外
@@ -35,7 +35,7 @@ func TestStripCGNATCandidates(t *testing.T) {
 	sdp := strings.Join([]string{
 		"v=0",
 		"a=candidate:1 1 udp 2130706431 192.168.31.82 51234 typ host",
-		"a=candidate:2 1 udp 2130706431 100.113.115.89 51235 typ host",
+		"a=candidate:2 1 udp 2130706431 100.100.100.100 51235 typ host",
 		"a=candidate:4 1 udp 2130706431 fd7a:115c:a1e0::bb38 51237 typ host",
 		"a=candidate:3 1 udp 1694498815 203.0.113.7 51236 typ srflx raddr 192.168.31.82 rport 51234",
 		"a=mid:0",
@@ -48,7 +48,7 @@ func TestStripCGNATCandidates(t *testing.T) {
 	if strings.Contains(out, "fd7a:115c:a1e0") {
 		t.Error("Tailscale 的 IPv6 候选没有被剔除")
 	}
-	if strings.Contains(out, "100.113.115.89") {
+	if strings.Contains(out, "100.100.100.100") {
 		t.Error("Tailscale 候选没有被剔除")
 	}
 	for _, keep := range []string{"192.168.31.82 51234", "203.0.113.7", "v=0", "a=mid:0"} {

@@ -20,8 +20,8 @@ import (
 	"github.com/pion/webrtc/v4"
 	"github.com/pion/webrtc/v4/pkg/media"
 
-	"github.com/hueshu/remotemic/internal/audio"
-	"github.com/hueshu/remotemic/internal/discover"
+	"github.com/hueshu/relaymic/internal/audio"
+	"github.com/hueshu/relaymic/internal/discover"
 )
 
 const (
@@ -475,7 +475,13 @@ func (e *Engine) connectOnce(l *link, stopped <-chan struct{}) (<-chan struct{},
 // fetchICE 从接收端拉 STUN/TURN 配置。拉不到就退回纯 STUN ——
 // 两端必须用同一套 TURN，中继候选才配得上对。
 func fetchICE(target string) []webrtc.ICEServer {
-	fallback := []webrtc.ICEServer{{URLs: []string{"stun:stun.miwifi.com:3478"}}}
+	// 兜底列表放多个:ICE 会并行探测,哪个通用哪个。国际与国内各留一条,
+	// 免得换个地区就连不上。
+	fallback := []webrtc.ICEServer{{URLs: []string{
+		"stun:stun.l.google.com:19302",
+		"stun:stun.cloudflare.com:3478",
+		"stun:stun.miwifi.com:3478",
+	}}}
 	resp, err := insecureClient().Get(target + "/ice-config")
 	if err != nil {
 		return fallback

@@ -23,11 +23,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/hueshu/remotemic/internal/audio"
-	"github.com/hueshu/remotemic/internal/discover"
-	"github.com/hueshu/remotemic/internal/rtc"
-	"github.com/hueshu/remotemic/internal/tlscert"
-	"github.com/hueshu/remotemic/internal/web"
+	"github.com/hueshu/relaymic/internal/audio"
+	"github.com/hueshu/relaymic/internal/discover"
+	"github.com/hueshu/relaymic/internal/rtc"
+	"github.com/hueshu/relaymic/internal/tlscert"
+	"github.com/hueshu/relaymic/internal/web"
 	"github.com/pion/webrtc/v4"
 )
 
@@ -56,7 +56,7 @@ func main() {
 	noCGNAT := flag.Bool("no-cgnat", false, "排除 100.64.0.0/10 候选，逼 ICE 走公网直连。需先配好 -turn")
 	// 默认用国内可达的 STUN：google 的在国内不通，而 answer 要等收集完才发，
 	// STUN 不通的代价是每次连接白等一个超时，不是"少个候选"那么便宜。
-	stun := flag.String("stun", "stun:stun.miwifi.com:3478,stun:stun.chat.bilibili.com:3478", "STUN 服务器，逗号分隔")
+	stun := flag.String("stun", "stun:stun.l.google.com:19302,stun:stun.cloudflare.com:3478,stun:stun.miwifi.com:3478", "STUN 服务器，逗号分隔")
 	turn := flag.String("turn", "", "TURN 地址，形如 turn:host:3478")
 	turnUser := flag.String("turn-user", "", "TURN 用户名")
 	turnPass := flag.String("turn-pass", "", "TURN 密码")

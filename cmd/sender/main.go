@@ -14,7 +14,7 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/hueshu/remotemic/internal/sender"
+	"github.com/hueshu/relaymic/internal/sender"
 )
 
 func main() {

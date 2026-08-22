@@ -7,7 +7,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/hueshu/remotemic/internal/audio"
+	"github.com/hueshu/relaymic/internal/audio"
 )
 
 const (

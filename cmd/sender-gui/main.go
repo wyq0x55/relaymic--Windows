@@ -15,7 +15,7 @@ import (
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 
-	"github.com/hueshu/remotemic/internal/sender"
+	"github.com/hueshu/relaymic/internal/sender"
 )
 
 // config 是要记住的用户选择，存在用户配置目录下。
