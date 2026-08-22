@@ -34,9 +34,9 @@ import (
 func defaultCertDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return ".remotemic"
+		return ".relaymic"
 	}
-	return filepath.Join(home, ".config", "remotemic")
+	return filepath.Join(home, ".config", "relaymic")
 }
 
 func defaultSegmentsDir() string { return filepath.Join(defaultCertDir(), "recordings") }

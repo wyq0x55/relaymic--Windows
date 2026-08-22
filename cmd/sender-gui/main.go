@@ -38,7 +38,7 @@ func configPath() string {
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(dir, "remotemic", "sender.json")
+	return filepath.Join(dir, "relaymic", "sender.json")
 }
 
 func loadConfig() config {
@@ -87,7 +87,7 @@ func useSystemCJKFont() {
 func main() {
 	useSystemCJKFont()
 
-	a := app.NewWithID("net.remotemic.sender")
+	a := app.NewWithID("com.relaymic.sender")
 	w := a.NewWindow("远程麦克风")
 	w.Resize(fyne.NewSize(380, 300))
 

@@ -95,7 +95,7 @@ func main() {
 	defer peerRelay.Close()
 	fmt.Printf("第二个中继 ✓  %s\n", peerRelay.LocalAddr())
 
-	payload := []byte("remotemic-turn-probe")
+	payload := []byte("relaymic-turn-probe")
 	start = time.Now()
 	if _, err := peerRelay.WriteTo(payload, relay.LocalAddr()); err != nil {
 		die("经中继发包", err)
