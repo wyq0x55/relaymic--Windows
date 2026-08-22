@@ -70,6 +70,12 @@ func main() {
 
 	log.SetFlags(log.Ltime)
 
+	// AGPL 说的 "Appropriate Legal Notices"：启动时把版权、无担保、
+	// 以及源码在哪告诉用户一次。命令行程序的惯例做法。
+	log.Println("RelayMic  Copyright (C) 2026 Shu Chunhui")
+	log.Println("本程序不提供任何担保，遵循 AGPL-3.0 发布。")
+	log.Println("源码：https://github.com/hueshu/relaymic")
+
 	actx, err := audio.NewContext()
 	if err != nil {
 		log.Fatalln("音频初始化失败:", err)
