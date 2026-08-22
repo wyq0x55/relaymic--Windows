@@ -364,9 +364,12 @@ Don't just say "it's installed". Cover these, in the user's own language:
 5. **Use different dictation shortcuts on the two machines** — if the local machine and the
    remote Mac both trigger dictation on the same key, one press fires both. Have the user change
    the remote Mac's shortcut to something else
-6. **Roughly how much latency** — network round trip plus a 150 ms buffer, close to a phone call.
+6. **Turn off audio forwarding in the remote desktop tool** — some tools (UU Remote, for one)
+   send the remote Mac's input audio back to the local machine, so the user hears their own voice
+   out of their own speakers. Disable sound transmission in the remote tool's settings
+7. **Roughly how much latency** — network round trip plus a 150 ms buffer, close to a phone call.
    Fine for talking, dictation and meetings; **not** for monitoring yourself while recording
-7. **Privacy** — the audio goes over an encrypted peer-to-peer connection and doesn't touch a
+8. **Privacy** — the audio goes over an encrypted peer-to-peer connection and doesn't touch a
    third party when it connects directly. No server of the author's is involved, so there is
    nothing on that side that could record. The code is open and can be checked
 
