@@ -4,10 +4,7 @@
   "version": "0.1.0",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "db:init": "wrangler d1 execute relaymic --remote --file=./schema.sql",
-    "db:init:local": "wrangler d1 execute relaymic --local --file=./schema.sql",
-    "waitlist": "node tools/waitlist.mjs"
+    "deploy": "wrangler deploy"
   },
   "devDependencies": {
     "wrangler": "^4"

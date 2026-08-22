@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RelayMic — a real microphone for the Mac you remote into</title>
-<meta name="description" content="Remote desktop forwards your screen, keyboard and mouse — not your voice. RelayMic turns any browser into a system microphone on the Mac you're controlling. Works alongside TeamViewer, AnyDesk, Parsec, RustDesk and Jump Desktop.">
+<meta name="description" content="Open-source: remote desktop forwards your screen, keyboard and mouse — not your voice. RelayMic turns any browser into a system microphone on the Mac you're controlling. Works alongside TeamViewer, AnyDesk, Parsec, RustDesk and Jump Desktop.">
 <link rel="canonical" href="https://relaymic.com/">
 <link rel="alternate" hreflang="en" href="https://relaymic.com/">
 <link rel="alternate" hreflang="es" href="https://relaymic.com/es/">
@@ -31,7 +31,8 @@
   "applicationCategory": "UtilitiesApplication",
   "operatingSystem": "macOS 12+",
   "description": "Turns any browser into a system microphone on a remote Mac, independent of the remote desktop software in use.",
-  "offers": { "@type": "Offer", "price": "4.99", "priceCurrency": "USD" }
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true
 }
 </script>
 </head>
@@ -46,10 +47,9 @@
     <nav class="nav-links">
       <a href="#how">How it works</a>
       <a href="#gap">The gap</a>
-      <a href="#pricing">Pricing</a>
       <a href="#faq">FAQ</a>
     </nav>
-    <a class="btn btn-solid" href="#get">Get early access</a>
+    <a class="btn btn-solid" href="https://github.com/hueshu/relaymic">GitHub</a>
   </div>
 </header>
 
@@ -65,17 +65,12 @@
     Zoom and everything else simply find it in the input list.
   </p>
 
-  <form class="signup" data-signup>
-    <div class="signup-row">
-      <label class="visually-hidden" for="email-top">Email address</label>
-      <input id="email-top" type="email" name="email" required autocomplete="email" placeholder="you@company.com" spellcheck="false">
-      <button class="btn btn-solid" type="submit">Get early access</button>
-    </div>
-    <div class="hp" aria-hidden="true"><label for="company-top">Company</label><input id="company-top" type="text" name="company" tabindex="-1" autocomplete="off"></div>
-    <p class="signup-note" data-note></p>
-  </form>
+  <div class="cta-row">
+    <a class="btn btn-solid" href="https://github.com/hueshu/relaymic">View on GitHub</a>
+    <a class="btn" href="https://github.com/hueshu/relaymic/blob/main/SETUP.md">How to install</a>
+  </div>
 
-  <p class="hero-meta">macOS 12+ on the receiving Mac &middot; any browser sends &middot; 7-day trial, then $4.99/mo</p>
+  <p class="hero-meta">macOS 12+ on the receiving Mac &middot; any browser sends &middot; MIT licensed, free forever</p>
 </section>
 
 <!-- ── 规格条 ───────────────────────────────────────── -->
@@ -85,7 +80,7 @@
       <div class="spec"><b>48 kHz</b><span>Opus, stereo</span></div>
       <div class="spec"><b>P2P</b><span>Direct whenever it can be</span></div>
       <div class="spec"><b>0 bytes</b><span>Of your audio stored</span></div>
-      <div class="spec"><b>3 Macs</b><span>Per license</span></div>
+      <div class="spec"><b>MIT</b><span>Open source, no limits</span></div>
     </div>
   </div>
 </section>
@@ -120,7 +115,7 @@
           <div class="devices">
             <div class="device"><span class="tick"></span>MacBook Pro Microphone</div>
             <div class="device is-on">
-              <span class="tick">▸</span>RelayMic
+              <span class="tick">▸</span>BlackHole 2ch
               <span class="mini" id="mini" aria-hidden="true"></span>
             </div>
             <div class="device"><span class="tick"></span>Aggregate Device</div>
@@ -246,44 +241,6 @@
   </div>
 </section>
 
-<!-- ── 定价 ─────────────────────────────────────────── -->
-<section class="band band-pad" id="pricing">
-  <div class="wrap">
-    <p class="eyebrow">Pricing</p>
-    <h2>One subscription, three Macs, relay included.</h2>
-
-    <div class="price-grid">
-      <div class="price">
-        <div class="price-label">Monthly</div>
-        <div class="price-amt">$4.99 <small>/ month</small></div>
-        <div class="price-sub">7-day free trial, everything included</div>
-        <ul class="price-list">
-          <li>Up to 3 Macs on one account</li>
-          <li>Unlimited sending devices</li>
-          <li>Relay bandwidth included</li>
-          <li>Cancel any time</li>
-        </ul>
-      </div>
-      <div class="price">
-        <div class="price-label">Yearly <span class="tag">Best value</span></div>
-        <div class="price-amt">$49 <small>/ year</small></div>
-        <div class="price-sub">Two months off the monthly price</div>
-        <ul class="price-list">
-          <li>Everything in monthly</li>
-          <li>Priority on new platform support</li>
-          <li>Same 7-day trial first</li>
-          <li>Regional pricing where it applies</li>
-        </ul>
-      </div>
-    </div>
-
-    <p class="footnote">
-      Early access opens in batches. Everyone on the list gets the trial before being asked for a
-      card, and founding subscribers keep their price.
-    </p>
-  </div>
-</section>
-
 <!-- ── FAQ ──────────────────────────────────────────── -->
 <section class="band band-pad" id="faq">
   <div class="wrap">
@@ -348,10 +305,21 @@
         </p>
       </details>
       <details>
-        <summary>Can I try it before paying?</summary>
+        <summary>What does it cost?</summary>
         <p>
-          Yes. Seven days, every feature, no card up front. If it doesn't do what this page says,
-          you've lost an install and a few minutes.
+          Nothing. It's MIT-licensed open source. There is no paid tier, no account, and no
+          server of ours in the path — which also means there is nothing for us to bill you for.
+          If you need a TURN relay for networks that refuse to connect directly, you bring your
+          own.
+        </p>
+      </details>
+      <details>
+        <summary>How rough is it, honestly?</summary>
+        <p>
+          It's the author's own tool, opened up. Command line, no installer, Chinese strings in
+          the UI, and you need Tailscale (or an equivalent) so the sending browser can reach the
+          Mac. The audio path itself is the mature part — three Macs use it daily, and the buffer
+          and gain parameters are what they are because something broke without them.
         </p>
       </details>
     </div>
@@ -363,18 +331,13 @@
   <div class="wrap end">
     <h2>Give the Mac over there a microphone.</h2>
     <p class="lede">
-      Early access is opening in batches. Leave an email and you'll hear from us once — when it's
-      your turn.
+      Clone it, hand the repo to your AI assistant, and tell it to follow SETUP.md. It installs
+      the dependencies, builds, and then teaches you how to use it.
     </p>
-    <form class="signup" data-signup>
-      <div class="signup-row">
-        <label class="visually-hidden" for="email-end">Email address</label>
-        <input id="email-end" type="email" name="email" required autocomplete="email" placeholder="you@company.com" spellcheck="false">
-        <button class="btn btn-solid" type="submit">Get early access</button>
-      </div>
-      <div class="hp" aria-hidden="true"><label for="company-end">Company</label><input id="company-end" type="text" name="company" tabindex="-1" autocomplete="off"></div>
-      <p class="signup-note" data-note></p>
-    </form>
+    <div class="cta-row" style="justify-content:center">
+      <a class="btn btn-solid" href="https://github.com/hueshu/relaymic">View on GitHub</a>
+      <a class="btn" href="https://github.com/hueshu/relaymic/blob/main/SETUP.md">Read SETUP.md</a>
+    </div>
   </div>
 </section>
 
@@ -385,6 +348,7 @@
   <a href="/privacy">Privacy</a>
   <a href="/terms">Terms</a>
   <a href="mailto:hey@relaymic.com">hey@relaymic.com</a>
+  <a href="https://github.com/hueshu/relaymic">GitHub</a>
   <a href="/es/" hreflang="es">Español</a>
   <span class="sep">Built for the Mac that isn't in front of you</span>
 </footer>

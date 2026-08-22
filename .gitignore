@@ -5,3 +5,8 @@ bin/
 # 落地页（site/）
 node_modules/
 .wrangler/
+
+# 凭证：任何形式都不进仓库
+.dev.vars
+.env
+*.local

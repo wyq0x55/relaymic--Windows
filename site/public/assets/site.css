@@ -214,6 +214,9 @@ h1 {
 /* ── 邮箱表单 ─────────────────────────────────────────── */
 
 .signup { margin-top: 38px; max-width: 520px; }
+/* 开源项目的 CTA 是两个并排按钮，不是输入框 */
+.cta-row { display: flex; gap: 12px; flex-wrap: wrap; }
+
 .signup-row { display: flex; border: 1px solid var(--rule-2); background: var(--ink-2); }
 .signup input {
   flex: 1;

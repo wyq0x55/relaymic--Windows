@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Privacy — RelayMic</title>
-<meta name="description" content="What RelayMic collects, what it does not, and how audio is handled.">
+<meta name="description" content="This site collects nothing. Here is what that means, and what happens to your audio.">
 <link rel="canonical" href="https://relaymic.com/privacy">
 <link rel="alternate" hreflang="en" href="https://relaymic.com/privacy">
 <link rel="alternate" hreflang="es" href="https://relaymic.com/es/privacy">
@@ -27,94 +27,56 @@
 
 <main class="wrap doc">
   <h1>Privacy</h1>
-  <p class="updated">Last updated 17 August 2026</p>
+  <p class="updated">Last updated 22 August 2026</p>
 
+  <h2>This website collects nothing</h2>
   <p>
-    This page describes what RelayMic collects today, while the product is in early access and the
-    website's only function is a waiting list. It is written to be read, not to be survived.
+    No cookies. No analytics scripts. No forms. No third-party fonts, tags or embeds — the fonts
+    are served from this domain. Nothing is logged beyond what our host, Cloudflare, needs to
+    serve a file and immediately discards.
   </p>
-
-  <h2>Who is responsible</h2>
   <p>
-    The data controller is <strong>Shu Chunhui</strong>, an individual developer based in Shanghai,
-    China, reachable at <a href="mailto:hey@relaymic.com">hey@relaymic.com</a>. Questions about your
-    data go to the same address and are answered by a person.
-  </p>
-
-  <h2>What the website collects</h2>
-  <p>When you submit the early-access form, we store four things:</p>
-  <ul>
-    <li>The <strong>email address</strong> you typed.</li>
-    <li>The <strong>country</strong> your request came from, as reported by our host, Cloudflare.</li>
-    <li>A <strong>referral tag</strong> from the link you arrived through, if the link had one.</li>
-    <li>A <strong>Google click identifier</strong>, if you arrived from one of our Google ads.
-      Google puts it on the link itself; we hand it back to Google later so it knows which ad
-      led to a signup. It is not used to profile you, and nothing on this page reports back to
-      Google while you read it.</li>
-  </ul>
-  <p>
-    We do not store your IP address, your browser's user agent, or anything else about the request.
-    The site sets <strong>no cookies</strong>, runs <strong>no analytics scripts</strong>, and loads
-    no third-party fonts, tags or embeds — the fonts are served from this domain.
-  </p>
-
-  <h2>Why we are allowed to hold it</h2>
-  <p>
-    Consent, which you give by submitting the form, and which you can withdraw at any time by
-    emailing us. The address is used for one purpose: to tell you when early access opens, and to
-    send occasional notes about the product's progress. It is not sold, rented, or shared with
-    advertisers, and it is not used to build a profile of you.
-  </p>
-
-  <h2>How long</h2>
-  <p>
-    Until you ask us to remove it, or until the waiting list has served its purpose and is deleted,
-    whichever comes first. Ask for removal and the row is deleted, not flagged.
+    There is no account to create, no email to leave, and no database behind this page. Earlier
+    versions of this site had a waiting-list form; it was removed when the project became
+    open source, and the list it wrote to is gone.
   </p>
 
   <h2>Your audio</h2>
   <p>
-    This is the part most people are actually asking about. RelayMic carries audio directly between
-    your browser and your Mac over an encrypted peer-to-peer connection. In most cases nothing
-    passes through our infrastructure at all. When two networks cannot reach each other directly,
-    the stream falls back to a relay server that forwards encrypted packets and keeps none of them:
-    <strong>no recordings, no buffering to disk, no transcription, no analysis</strong>. We cannot
-    listen to what you say through RelayMic, and we have built nothing that could.
+    This is the part most people are actually asking about.
   </p>
   <p>
-    The diagnostic recordings you may have read about are a local feature: they are written to your
-    own Mac, stay there, and are yours to delete.
+    RelayMic carries audio directly between your browser and your Mac over an encrypted
+    peer-to-peer connection. When two networks cannot reach each other directly, it falls back to
+    a TURN relay — <strong>one that you configure and control</strong>. There is no server of ours
+    anywhere in that path.
   </p>
-
-  <h2>Who else touches the data</h2>
   <p>
-    Cloudflare, Inc. hosts this website and its database, and provides the relay servers described
-    above. When you join the list, a short notification is emailed to the operator, which means your
-    address passes through Google's mail service on its way to his inbox. That is the complete list.
-    When paid subscriptions open, a payment provider will be added here by name before it handles
-    anything of yours.
+    That is a stronger statement than a promise not to look: <strong>we could not look if we
+    wanted to</strong>, because nothing of ours is in the way. And you do not have to take our
+    word for any of it — <a href="https://github.com/hueshu/relaymic">the code is public</a>.
+    Read it. That is the point of open-sourcing a tool that handles your voice.
+  </p>
+  <p>
+    The diagnostic recordings you may have read about are a local feature: they are written to
+    your own Mac, stay there, and are yours to delete.
   </p>
 
-  <h2>Where it is, and who reaches it</h2>
+  <h2>Who is behind this</h2>
   <p>
-    The waiting list lives in a Cloudflare D1 database in a North American region, and is read by the
-    controller from China. If you are in the EU, EEA or UK, that is a transfer outside your
-    jurisdiction, made on the basis of your consent under Article 49(1)(a) GDPR. You can withdraw
-    that consent at any time by emailing us, and the row is deleted rather than flagged.
+    RelayMic is written by <strong>Shu Chunhui</strong>, an individual developer based in
+    Shanghai, China, reachable at <a href="mailto:hey@relaymic.com">hey@relaymic.com</a>.
   </p>
-
-  <h2>Your rights</h2>
   <p>
-    If you are in the EU, EEA or UK, you have the right to access, correct, export, restrict or
-    delete your data, to withdraw consent, and to complain to your supervisory authority. Email
-    <a href="mailto:hey@relaymic.com">hey@relaymic.com</a> and we will act within 30 days — usually
-    the same week.
+    If you email that address, your message obviously reaches a person — that is the only way any
+    personal data of yours ends up with us, and only because you chose to send it. It is not
+    added to any list.
   </p>
 
   <h2>Changes</h2>
   <p>
-    If this policy changes materially before the product ships, everyone on the waiting list is told
-    by email, not by a silently updated date at the top of the page.
+    If this ever stops being true, this page changes first, and the change is visible in the
+    site's public git history.
   </p>
 </main>
 
@@ -122,7 +84,7 @@
   <span>&copy; 2026 RelayMic</span>
   <a href="/">Home</a>
   <a href="/terms">Terms</a>
-  <a href="mailto:hey@relaymic.com">hey@relaymic.com</a>
+  <a href="https://github.com/hueshu/relaymic">GitHub</a>
   <a href="/es/privacy" hreflang="es">Español</a>
 </footer>
 
