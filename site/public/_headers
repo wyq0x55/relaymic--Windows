@@ -3,7 +3,7 @@
   X-Frame-Options: DENY
   Referrer-Policy: strict-origin-when-cross-origin
   Permissions-Policy: geolocation=(), camera=(), payment=()
-  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'self'; script-src 'self' https://*.googletagmanager.com; style-src 'self'; img-src 'self' data: https://*.google-analytics.com https://*.googletagmanager.com; font-src 'self'; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com; form-action 'self'; base-uri 'none'; frame-ancestors 'none'
 
 # no-transform 是标准指令：禁止中间代理改动响应体。Cloudflare 会据此关掉它
 # 对 HTML 的全部后处理 —— 包括自动往页面里塞 Web Analytics 的 beacon。
@@ -53,4 +53,7 @@
   Cache-Control: public, max-age=600
 
 /assets/signal.js
+  Cache-Control: public, max-age=600
+
+/assets/ga.js
   Cache-Control: public, max-age=600

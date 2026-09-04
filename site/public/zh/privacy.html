@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>隐私 — RelayMic</title>
-<meta name="description" content="这个网站什么都不收集。这句话是什么意思，以及你的声音去了哪里。">
+<meta name="description" content="这个网站收集什么（访问统计，仅此而已），以及你的声音去了哪里。">
 <link rel="canonical" href="https://relaymic.com/zh/privacy">
 <link rel="alternate" hreflang="en" href="https://relaymic.com/privacy">
 <link rel="alternate" hreflang="es" href="https://relaymic.com/es/privacy">
@@ -13,6 +13,8 @@
 <meta name="robots" content="index, follow">
 <link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/assets/site.css">
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-RMG8MNGGZQ"></script>
+<script src="/assets/ga.js"></script>
 </head>
 <body>
 
@@ -28,15 +30,14 @@
 
 <main class="wrap doc">
   <h1>隐私</h1>
-  <p class="updated">最后更新：2026 年 8 月 22 日</p>
+  <p class="updated">最后更新：2026 年 8 月 24 日</p>
 
-  <h2>这个网站什么都不收集</h2>
+  <h2>这个网站收集什么</h2>
   <p>
-    没有 Cookie。没有统计脚本。没有表单。没有第三方字体、埋点或嵌入内容 ——
-    字体是从本域名发出来的。除了托管方 Cloudflare 为了发出一个文件所必需、且随即丢弃的那些，什么都不记录。
+    一样东西：访问统计，用的是 Google Analytics —— 哪些页面被打开、访客大致来自哪里、从哪个渠道找到这个站。它会设一个 Cookie 用来区分回访的浏览器。这是全站唯一的第三方脚本；这一段是因为加了它才写的 —— 此前这页写的是「什么都不收集」，改动就像下面承诺的那样，明明白白留在网站公开的 git 历史里。
   </p>
   <p>
-    没有账号要注册，没有邮箱要留，这个页面背后也没有数据库。早期版本有过一个收邮箱的等待名单表单，项目转为开源时连同它背后的名单一起删掉了。
+    其余不变：没有账号要注册，没有邮箱要留，没有表单，页面背后也没有数据库。字体从本域名发出。你要是屏蔽了统计脚本，网站的一切照常工作。
   </p>
 
   <h2>你的声音</h2>

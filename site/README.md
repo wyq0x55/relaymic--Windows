@@ -37,15 +37,20 @@ npm run deploy
 `www.relaymic.com` 也绑了，但由 Worker 301 到根域 —— 两个域都能打开会把外链和搜索
 权重劈成两半，而 canonical 指的是根域。
 
-## 这个站不收集任何东西
+## 这个站收集什么：GA4 访问统计，仅此而已
 
-没有表单、没有 cookie、没有分析脚本、没有数据库。**这是刻意的**：RelayMic 是个处理
-用户声音的工具，隐私政策里那句"我们什么都不收"必须是真的，否则整个信任基础就是假的。
-少收一样东西，政策里就能少写一条。
+Measurement ID `G-RMG8MNGGZQ`（GA4 property 552752895）。三语九页都挂了，
+初始化代码在 `assets/ga.js` —— 单独成文件而不是内联，是为了 CSP 继续不开
+`unsafe-inline`。`_headers` 里的 CSP 已按 GA4 的官方域名清单放行
+（script/img/connect 三个指令，`*.googletagmanager.com` / `*.google-analytics.com` /
+`*.analytics.google.com`）。
 
-早期版本有过收邮箱的等待名单（投流测试用），随项目转为纯开源一并拆掉了 ——
-`/api/subscribe`、D1 绑定、邮件通知、`schema.sql`、看名单的脚本，全部删除。
-改动见 git 历史。
+**装分析动了三处，缺一处政策就是假的**：CSP 放行、三语隐私政策改写实
+（「什么都不收集」→「收访问统计，会设 Cookie」）、这份 README。隐私政策里
+还特意写了"这段话是因为加了它才出现的，改动在公开 git 历史里" —— 兑现当初
+"政策变更先改页面、git 可查"的承诺。
+
+表单、邮箱名单、数据库仍然没有 —— 那条链路在转开源时整个拆了，见 git 历史。
 
 ## 西语版
 

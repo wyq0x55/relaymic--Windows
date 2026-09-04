@@ -10,3 +10,8 @@ node_modules/
 .dev.vars
 .env
 *.local
+
+# 私有文档：内部策略、服务器地址、发帖草稿——绝不进公开仓库。
+# 曾经因为 git add -A 误提交过一次，这条是补的锁。
+docs/relaymic-private-docs/
+*-private-docs/
