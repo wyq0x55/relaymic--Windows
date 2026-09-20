@@ -43,7 +43,13 @@ func defaultSegmentsDir() string { return filepath.Join(defaultCertDir(), "recor
 
 func main() {
 	addr := flag.String("addr", ":7420", "监听地址")
-	deviceName := flag.String("device", "blackhole", "输出设备名（子串匹配）")
+	defaultDevice := "blackhole"
+	if runtime.GOOS == "windows" {
+		// VB-CABLE 的播放端通常显示为 "CABLE Input (VB-Audio Virtual Cable)"。
+		// 只匹配 cable，避免依赖驱动版本/本地化后的完整设备名。
+		defaultDevice = "cable"
+	}
+	deviceName := flag.String("device", defaultDevice, "输出设备名（子串匹配）；Windows 默认匹配 VB-CABLE")
 	// 150ms 是实测值：80ms 扛不住 WiFi 突发，600ms 白垫延迟。
 	bufferMS := flag.Int("buffer", 150, "抖动缓冲目标深度（毫秒）")
 	plain := flag.Bool("plain", false, "用 http 而非 https（只有从本机访问才够用）")
@@ -515,7 +521,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("虚拟麦克风: %s", dev.Name)
+		log.Printf("虚拟麦克风输出设备: %s", dev.Name)
 		log.Printf("发送端地址: %s://localhost:%s", scheme, port)
 		log.Printf("监控页面: %s://localhost:%s/monitor", scheme, port)
 		for _, ip := range ips {
