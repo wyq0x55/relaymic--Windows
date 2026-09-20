@@ -1,4 +1,4 @@
-package main
+package receiverconfig
 
 import "testing"
 
@@ -14,8 +14,8 @@ func TestDefaultOutputDeviceForOS(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.goos, func(t *testing.T) {
-			if got := defaultOutputDeviceForOS(tt.goos); got != tt.want {
-				t.Fatalf("defaultOutputDeviceForOS(%q) = %q, want %q", tt.goos, got, tt.want)
+			if got := DefaultOutputDeviceForOS(tt.goos); got != tt.want {
+				t.Fatalf("DefaultOutputDeviceForOS(%q) = %q, want %q", tt.goos, got, tt.want)
 			}
 		})
 	}
