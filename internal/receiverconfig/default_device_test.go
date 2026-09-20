@@ -7,7 +7,7 @@ func TestDefaultOutputDeviceForOS(t *testing.T) {
 		goos string
 		want string
 	}{
-		{goos: "windows", want: "cable"},
+		{goos: "windows", want: "cable input"},
 		{goos: "darwin", want: "blackhole"},
 		{goos: "linux", want: "blackhole"},
 	}
