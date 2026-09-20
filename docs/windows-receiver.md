@@ -31,6 +31,14 @@ If multiple devices contain `cable`, pass a more specific selector:
 .\receiver.exe -device "CABLE Input"
 ```
 
+Before connecting a browser, verify the cable path with the bundled probe. It
+lists playback devices and writes a 440 Hz tone only to the selected virtual
+cable; Teams should show activity on `CABLE Output` while the tone plays.
+
+```powershell
+go run -tags nolibopusfile ./cmd/probe -device "CABLE Input" -tone 3s
+```
+
 ## Safety / failure behavior
 
 RelayMic never falls back to the Windows default speakers when the configured virtual cable cannot be found. Device selection must succeed before the receiver starts. This prevents remote microphone audio from leaking through physical speakers.

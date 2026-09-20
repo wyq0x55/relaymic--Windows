@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"math"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/hueshu/relaymic/internal/audio"
+	"github.com/hueshu/relaymic/internal/receiverconfig"
 )
 
 const (
@@ -16,7 +18,8 @@ const (
 )
 
 func main() {
-	tone := flag.Duration("tone", 0, "往 BlackHole 播这么久的 440Hz 正弦波做自检")
+	deviceName := flag.String("device", receiverconfig.DefaultOutputDeviceForOS(runtime.GOOS), "输出设备名（子串匹配）；Windows 默认匹配 VB-CABLE")
+	tone := flag.Duration("tone", 0, "往目标虚拟音频设备播放这么久的 440Hz 正弦波做自检")
 	flag.Parse()
 
 	ctx, err := audio.NewContext()
@@ -38,17 +41,17 @@ func main() {
 		fmt.Printf("  %s %s\n", mark, d.Name)
 	}
 
-	bh, err := ctx.FindPlayback("blackhole")
+	target, err := ctx.FindPlayback(*deviceName)
 	if err != nil {
 		die(err)
 	}
-	fmt.Printf("\n目标设备: %s\n", bh.Name)
+	fmt.Printf("\n目标设备: %s\n", target.Name)
 
 	if *tone == 0 {
 		return
 	}
 
-	player, err := ctx.NewPlayer(bh, sampleRate, channels, 60)
+	player, err := ctx.NewPlayer(target, sampleRate, channels, 60)
 	if err != nil {
 		die(err)
 	}
