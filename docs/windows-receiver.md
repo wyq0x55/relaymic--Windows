@@ -21,7 +21,7 @@ The existing `internal/audio` path uses miniaudio through `malgo`; on Windows th
 1. Install VB-CABLE (or another Windows virtual cable).
 2. Reboot if the driver installer requests it.
 3. Build RelayMic on Windows.
-4. Run `receiver.exe`. On Windows the default `-device` selector is `cable`.
+4. Run `receiver.exe`. On Windows the default `-device` selector is `CABLE Input`.
 5. Confirm the startup log says `虚拟麦克风输出设备: CABLE Input ...`.
 6. In Teams, choose the corresponding **CABLE Output** recording device as the microphone.
 

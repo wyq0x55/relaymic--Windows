@@ -6,9 +6,9 @@ package audio
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/gen2brain/malgo"
+	"github.com/hueshu/relaymic/internal/audiodevice"
 )
 
 // Device 是一个可用的音频输出设备。
@@ -62,19 +62,13 @@ func (c *Context) FindPlayback(substr string) (Device, error) {
 	if err != nil {
 		return Device{}, err
 	}
-	want := normalize(substr)
-	for _, d := range devices {
-		if strings.Contains(normalize(d.Name), want) {
-			return d, nil
-		}
-	}
 	names := make([]string, len(devices))
 	for i, d := range devices {
 		names[i] = d.Name
 	}
-	return Device{}, fmt.Errorf("没有找到名字含 %q 的输出设备，当前可用：%s", substr, strings.Join(names, " / "))
-}
-
-func normalize(s string) string {
-	return strings.ToLower(strings.ReplaceAll(s, " ", ""))
+	index, err := audiodevice.UniqueMatchIndex(names, substr)
+	if err != nil {
+		return Device{}, err
+	}
+	return devices[index], nil
 }

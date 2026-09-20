@@ -6,7 +6,7 @@ package receiverconfig
 // endpoint; other platforms retain the established BlackHole default.
 func DefaultOutputDeviceForOS(goos string) string {
 	if goos == "windows" {
-		return "cable"
+		return "cable input"
 	}
 	return "blackhole"
 }
