@@ -23,6 +23,8 @@ without falling back to physical speakers.
 - `go vet ./internal/receiverconfig ./internal/audiodevice` passed.
 - `git diff --check origin/master...HEAD` passed.
 - A focused secrets scan over the changed files found no matches.
+- With the native CGO toolchain configured, `go test -tags nolibopusfile ./...`
+  and `go vet -tags nolibopusfile ./...` both passed.
 
 ## Native build and runtime evidence
 
