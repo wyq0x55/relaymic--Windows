@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gen2brain/malgo"
+	"github.com/hueshu/relaymic/internal/audiodevice"
 )
 
 // 采集能力只给发送端用。接收端"从不打开输入设备"的防回环约定不变：
@@ -45,9 +46,9 @@ func (c *Context) FindCapture(substr string) (Device, error) {
 		}
 		return Device{}, fmt.Errorf("这台机器上没有输入设备")
 	}
-	want := normalize(substr)
+	want := audiodevice.NormalizeName(substr)
 	for _, d := range devices {
-		if strings.Contains(normalize(d.Name), want) {
+		if strings.Contains(audiodevice.NormalizeName(d.Name), want) {
 			return d, nil
 		}
 	}

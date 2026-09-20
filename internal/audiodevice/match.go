@@ -10,14 +10,14 @@ import (
 // case and space normalization. An empty, missing, or ambiguous selector is an
 // error so callers never silently choose a different output device.
 func UniqueMatchIndex(names []string, selector string) (int, error) {
-	want := normalize(selector)
+	want := NormalizeName(selector)
 	if want == "" {
 		return -1, fmt.Errorf("输出设备选择器不能为空")
 	}
 
 	matches := make([]int, 0, 1)
 	for i, name := range names {
-		if strings.Contains(normalize(name), want) {
+		if strings.Contains(NormalizeName(name), want) {
 			matches = append(matches, i)
 		}
 	}
@@ -36,6 +36,8 @@ func UniqueMatchIndex(names []string, selector string) (int, error) {
 	}
 }
 
-func normalize(s string) string {
+// NormalizeName removes ASCII spaces and folds case for the device-name
+// substring matching used by both playback and capture selection.
+func NormalizeName(s string) string {
 	return strings.ToLower(strings.ReplaceAll(s, " ", ""))
 }
