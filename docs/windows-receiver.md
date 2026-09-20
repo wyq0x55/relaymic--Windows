@@ -41,7 +41,7 @@ go run -tags nolibopusfile ./cmd/probe -device "CABLE Input" -tone 3s
 
 ## Safety / failure behavior
 
-RelayMic never falls back to the Windows default speakers when the configured virtual cable cannot be found. Device selection must succeed before the receiver starts. This prevents remote microphone audio from leaking through physical speakers.
+RelayMic never falls back to the Windows default speakers when the configured virtual cable cannot be found. Device selection must succeed before the receiver starts; an empty or ambiguous selector also exits and lists the matching endpoints. This prevents remote microphone audio from leaking through physical speakers.
 
 ## Current milestone boundary
 
