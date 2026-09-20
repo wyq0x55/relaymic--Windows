@@ -16,6 +16,7 @@ without falling back to physical speakers.
 | --- | --- | --- |
 | Windows default is `cable input`; other systems keep `blackhole` | `go test ./internal/receiverconfig` failed: `DefaultOutputDeviceForOS` undefined, then failed because Windows returned `cable` | `go test -cover ./internal/receiverconfig` passed, 100.0% statements |
 | Device matching accepts exactly one normalized match and rejects empty, absent, and ambiguous selectors | `go test ./internal/audiodevice` failed: `UniqueMatchIndex` undefined | `go test -cover ./internal/audiodevice` passed, 100.0% statements |
+| Playback and capture share one name-normalization rule | `go test ./internal/audiodevice` failed: `NormalizeName` undefined | `go test -cover ./internal/audiodevice ./internal/receiverconfig` passed, both 100.0% statements |
 
 ## Additional verification
 
@@ -23,17 +24,20 @@ without falling back to physical speakers.
 - `git diff --check origin/master...HEAD` passed.
 - A focused secrets scan over the changed files found no matches.
 
-## Known validation boundary
+## Native build and runtime evidence
 
-The full Receiver/probe CGO build was attempted with:
+With `CGO_ENABLED=1`, Scoop MinGW64 GCC, pkgconf, and a static Opus library
+built from the official source, the following passed:
 
 ```powershell
 go test -tags nolibopusfile ./cmd/receiver ./cmd/probe
 ```
 
-It did not compile because this machine has `CGO_ENABLED=0` and lacks the
-MSYS2 MinGW64 GCC, pkg-config, and Opus dependencies. MSYS2 installation
-completed, but its first-run GPG key refresh timed out three times, so those
-packages were not installed. The machine also has no VB-CABLE endpoint (only
-Realtek audio was detected). Consequently this document is source-level test
-evidence, not proof of a Windows VB-CABLE or Teams execution.
+Static `relaymic-receiver.exe` (29.1 MB) and `relaymic-probe.exe` (7.5 MB)
+were also built successfully. The probe and receiver were run without a cable;
+each listed the available Realtek/display playback devices and exited with the
+actionable missing-`cable input` error. The receiver exit code was 1, before it
+started listening or opened a physical playback device.
+
+This machine has no VB-CABLE endpoint, so the evidence proves Windows native
+build and fail-closed behavior but not VB-CABLE routing or Teams execution.
