@@ -15,3 +15,5 @@ node_modules/
 # 曾经因为 git add -A 误提交过一次，这条是补的锁。
 docs/relaymic-private-docs/
 *-private-docs/
+# 本地临时产物：截图、一次性测试二进制等，不进仓库。
+.tmp/
