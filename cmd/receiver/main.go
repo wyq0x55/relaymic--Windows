@@ -30,6 +30,7 @@ import (
 	"github.com/hueshu/relaymic/internal/audio"
 	"github.com/hueshu/relaymic/internal/audiodevice"
 	"github.com/hueshu/relaymic/internal/hubclient"
+	"github.com/hueshu/relaymic/internal/monitor"
 	"github.com/hueshu/relaymic/internal/receiverconfig"
 	"github.com/hueshu/relaymic/internal/rtc"
 	"github.com/hueshu/relaymic/internal/signaling"
@@ -277,6 +278,7 @@ func main() {
 	}
 
 	st := &statusState{state: "未连接"}
+	pairing := monitor.NewPairingState()
 
 	receiver := rtc.New(
 		func(pcm []int16) {
@@ -337,6 +339,7 @@ func main() {
 	// 回传电平：和上行一样单独取，用来回答"对面到底有没有声音进来"。
 	// 没有这个读数，"听不到会议"只能靠猜。
 	var returnLevel *levelMeter
+	returnSourceName, returnSourceMode := "", "未配置"
 	if returnSrc.enabled() {
 		downlink, err := rtc.NewDownlink()
 		if err != nil {
@@ -369,10 +372,13 @@ func main() {
 		}
 		defer capturer.Close()
 		if returnSrc.loopback {
+			returnSourceMode = "环回"
 			log.Printf("回传: 环回采集 %s（含这台机器的全部系统声音）", captureDev.Name)
 		} else {
+			returnSourceMode = "虚拟线"
 			log.Printf("回传: 采集 %s", captureDev.Name)
 		}
+		returnSourceName = captureDev.Name
 	}
 	receiver.OnNotice(func(msg string) { log.Println(msg) })
 
@@ -403,10 +409,14 @@ func main() {
 			OnCode: func(code string, expiresIn time.Duration) {
 				log.Printf("已连接 %s", *hub)
 				log.Printf("设备: %s", dev.Name)
-				log.Printf("配对码: %s（%d 分钟内有效，用过即换）", code, int(expiresIn.Minutes()))
+				pairing.Set(code, time.Now().Add(expiresIn))
+				if *monitor == "" {
+					log.Printf("已生成一次性配对码（%d 分钟有效）；用 -monitor 127.0.0.1:7420 在本机查看", int(expiresIn.Minutes()))
+				}
 				st.setState("等待发送端")
 			},
 			OnJoined: func(session string, sessionICE []signaling.ICEServer) {
+				pairing.Clear()
 				if len(sessionICE) > 0 {
 					receiver.SetICEServers(hubICEServers(sessionICE))
 					log.Printf("已应用控制面 ICE 配置（%d 项）", len(sessionICE))
@@ -414,6 +424,7 @@ func main() {
 				log.Println("发送端已接入")
 			},
 			OnLeft: func(session string) {
+				pairing.Clear()
 				log.Println("发送端已离开，控制面已换新配对码")
 			},
 			OnError: func(message string) {
@@ -449,17 +460,29 @@ func main() {
 		buffered, dropped, starved := player.Stats()
 		received, lost, _, _ := receiver.Stats().Snapshot()
 		state, path, levelDB, gain := st.snapshot()
+		pairingView := pairing.Snapshot(time.Now(), monitor.IsLoopbackRemoteAddr(r.RemoteAddr))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"state":      state,
-			"path":       path,
-			"levelDb":    levelDB,
-			"gain":       gain,
-			"bufferedMs": buffered * 1000 / (rtc.SampleRate * rtc.Channels),
-			"dropped":    dropped,
-			"starved":    starved,
-			"received":   received,
-			"lost":       lost,
+			"state":        state,
+			"path":         path,
+			"levelDb":      levelDB,
+			"gain":         gain,
+			"bufferedMs":   buffered * 1000 / (rtc.SampleRate * rtc.Channels),
+			"dropped":      dropped,
+			"starved":      starved,
+			"received":     received,
+			"lost":         lost,
+			"hub":          *hub,
+			"outputDevice": dev.Name,
+			"returnSource": returnSourceName,
+			"returnMode":   returnSourceMode,
+			"forceRelay":   *forceRelay,
+			"pairing": map[string]any{
+				"active":       pairingView.Active,
+				"code":         pairingView.Code,
+				"hidden":       pairingView.Hidden,
+				"expiresInSec": int(math.Ceil(pairingView.ExpiresIn.Seconds())),
+			},
 		})
 	})
 	toJSON := func(r *audio.SegmentRecorder) []segmentJSON {

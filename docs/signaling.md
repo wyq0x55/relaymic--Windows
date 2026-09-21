@@ -27,15 +27,15 @@ RelayMic 原来的模型是"发送端必须能直接访问接收端的 `:7420`"�
 1. 接收端启动，主动连上控制面：
 
    ```
-   relaymic-receiver.exe -hub wss://mic.example.com/ws/receiver -token-file C:\relaymic\token
+   relaymic-receiver.exe -hub wss://mic.example.com/ws/receiver -token-file C:\relaymic\token -monitor 127.0.0.1:7420
    ```
 
-   日志会打印当前配对码：
+   在 Receiver 本机打开 `http://127.0.0.1:7420/monitor` 查看当前配对码、倒计时、
+   链路类型和实时收包统计：
 
    ```
-   已连接 wss://mic.example.com/ws/receiver
-   设备: CABLE Input (VB-Audio Virtual Cable)
-   配对码: 583921（5 分钟内有效，用过即换）
+   一次性配对码 583 921
+   剩余 4:59；用过即失效
    ```
 
 2. 你在任何设备的浏览器打开 `https://mic.example.com`，输入 `583921`，
@@ -153,13 +153,14 @@ WantedBy=multi-user.target
 |---|---|
 | `-hub` | 控制面地址，形如 `wss://mic.example.com/ws/receiver`；必填 |
 | `-token` / `-token-file` | 接收端凭据，二选一 |
-| `-monitor` | 本机诊断页监听地址，例如 `127.0.0.1:7420`；**留空表示不监听任何端口** |
+| `-monitor` | 本机控制台监听地址，例如 `127.0.0.1:7420`；显示配对码、状态和链路统计；**留空表示不监听任何端口** |
 | `-device` | 虚拟音频设备；Windows 默认 `CABLE Input` |
 
 当 Hub 配了 `turn` 时，Receiver 会在成功配对后自动应用短期会话 ICE 配置；不需要也
 不应把 `-turn-user` / `-turn-pass` 写入命令行。`-force-relay` 只用于验证 coturn 路径。
 
-接收端没有任何入站监听。要本机看波形就显式开 `-monitor`，并自己决定绑哪个地址。
+接收端没有任何入站监听。要看本机控制台就显式开 `-monitor`；配对码只会在
+`127.0.0.1` / `::1` 访问时返回，其他地址的页面只显示已隐藏，避免把短期能力暴露到局域网。
 
 ## 本机自测
 

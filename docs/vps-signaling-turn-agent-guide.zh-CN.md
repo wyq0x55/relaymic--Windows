@@ -321,9 +321,11 @@ C:\\workspeace\\relaymic\\bin\\relaymic-receiver.exe `
   -token-file "C:\\relaymic\\receiver-token.txt" `
   -device "CABLE Input" `
   -return-device "VoiceMeeter Aux Output" `
+  -monitor "127.0.0.1:7420" `
   -force-relay
 ```
 
-Receiver 打印一次性配对码后，在任意设备打开 `https://SIGNAL_FQDN`，输入配对码，授权
+在 Receiver 电脑上打开 `http://127.0.0.1:7420/monitor` 查看一次性配对码；它只在本机
+回环地址显示，不会写入运行日志。随后在任意设备打开 `https://SIGNAL_FQDN`，输入配对码，授权
 麦克风。先确认直连路径；再用 `-force-relay` 验证经 coturn 的双向通话，最后宣布公网
 受限网络支持完成。

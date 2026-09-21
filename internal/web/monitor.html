@@ -23,7 +23,7 @@
     font: 15px/1.6 -apple-system, "Segoe UI", system-ui, sans-serif;
     padding: 24px;
   }
-  main { width: 100%; max-width: 480px; margin: 0 auto; }
+  main { width: 100%; max-width: 520px; margin: 0 auto; }
   h1 { font-size: 17px; font-weight: 600; margin: 0 0 20px; }
 
   .card {
@@ -38,6 +38,10 @@
     color: var(--dim);
     margin: 0 0 12px;
   }
+  .code { font: 700 34px/1.1 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .16em; font-variant-numeric: tabular-nums; }
+  .hint { color: var(--dim); font-size: 13px; margin-top: 8px; }
+  button { margin-top: 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 7px; background: #1b202a; color: var(--fg); font: inherit; cursor: pointer; }
+  button:disabled { cursor: default; color: var(--dim); }
 
   #state { font-size: 15px; font-weight: 600; }
   #path { color: var(--dim); font-size: 13px; margin: 4px 0 16px; word-break: break-all; }
@@ -59,6 +63,9 @@
 
   .stats { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--dim); }
   .stats b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .config { display: grid; grid-template-columns: 96px 1fr; gap: 5px 12px; font-size: 13px; }
+  .config dt { color: var(--dim); }
+  .config dd { margin: 0; overflow-wrap: anywhere; }
 
   .segment { padding: 12px 0; border-top: 1px solid var(--line); }
   .segment:first-child { border-top: 0; padding-top: 0; }
@@ -80,6 +87,13 @@
   <h1>接收监控</h1>
 
   <div class="card">
+    <h2>一次性配对码</h2>
+    <div id="code" class="code">—— ——</div>
+    <div id="codeHint" class="hint">等待 Hub 下发配对码</div>
+    <button id="copyCode" type="button" disabled>复制配对码</button>
+  </div>
+
+  <div class="card">
     <div id="state" class="warn">—</div>
     <div id="path">—</div>
     <div class="meter"><i id="level"></i></div>
@@ -93,6 +107,16 @@
   </div>
 
   <div class="card">
+    <h2>运行配置</h2>
+    <dl class="config">
+      <dt>Hub</dt><dd id="hub">—</dd>
+      <dt>输出设备</dt><dd id="outputDevice">—</dd>
+      <dt>回传</dt><dd id="returnSource">—</dd>
+      <dt>中继模式</dt><dd id="relayMode">—</dd>
+    </dl>
+  </div>
+
+  <div class="card">
     <h2>分段录音</h2>
     <div id="segments">
       <div class="empty">还没有录到语音段</div>
@@ -102,6 +126,7 @@
 
 <script>
 const $ = id => document.getElementById(id);
+let pairingCode = '';
 
 // 接收端多数故障（进程没起、局域网断了）会让 fetch 直接抛错而不是返回非 200，
 // 两种情况一律归一成"离线"，用户不用分辨是哪一种。
@@ -130,7 +155,43 @@ function renderStatus(s) {
   $('starved').textContent = s.starved ?? '—';
   $('received').textContent = s.received ?? '—';
   $('lost').textContent = s.lost ?? '—';
+
+  renderPairing(s.pairing || {});
+  $('hub').textContent = s.hub || '—';
+  $('outputDevice').textContent = s.outputDevice || '—';
+  $('returnSource').textContent = s.returnSource ? `${s.returnMode || '回传'}：${s.returnSource}` : '未配置';
+  $('relayMode').textContent = s.forceRelay ? '强制 TURN 中继' : '自动（直连优先）';
 }
+
+function renderPairing(pairing) {
+  pairingCode = pairing.code || '';
+  if (!pairing.active) {
+    $('code').textContent = '—— ——';
+    $('codeHint').textContent = '等待 Hub 下发配对码';
+  } else if (pairing.hidden) {
+    $('code').textContent = '已隐藏';
+    $('codeHint').textContent = '配对码仅在 Receiver 本机浏览器显示';
+  } else {
+    $('code').textContent = pairingCode.slice(0, 3) + ' ' + pairingCode.slice(3);
+    $('codeHint').textContent = `剩余 ${formatCountdown(pairing.expiresInSec)}；用过即失效`;
+  }
+  $('copyCode').disabled = !pairingCode;
+}
+
+function formatCountdown(seconds) {
+  seconds = Math.max(0, Number(seconds) || 0);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+$('copyCode').onclick = async () => {
+  if (!pairingCode) return;
+  try {
+    await navigator.clipboard.writeText(pairingCode);
+    $('codeHint').textContent = '已复制；用过即失效';
+  } catch {
+    $('codeHint').textContent = '复制失败，请手动输入配对码';
+  }
+};
 
 function renderOffline() {
   $('state').textContent = '接收端离线';
@@ -139,6 +200,8 @@ function renderOffline() {
   $('level').style.width = '0';
   $('buffered').textContent = $('dropped').textContent = $('starved').textContent =
     $('received').textContent = $('lost').textContent = '—';
+  renderPairing({});
+  $('hub').textContent = $('outputDevice').textContent = $('returnSource').textContent = $('relayMode').textContent = '—';
 }
 
 pollStatus();

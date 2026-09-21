@@ -43,6 +43,16 @@ go run -tags nolibopusfile ./cmd/probe -device "CABLE Input" -tone 3s
 
 RelayMic never falls back to the Windows default speakers when the configured virtual cable cannot be found. Device selection must succeed before the receiver starts; an empty or ambiguous selector also exits and lists the matching endpoints. This prevents remote microphone audio from leaking through physical speakers.
 
+## Local console
+
+Start the Receiver with `-monitor "127.0.0.1:7420"`, then open
+`http://127.0.0.1:7420/monitor` on the same Windows computer. It shows the current
+one-time pairing code and countdown, ICE path, live audio level, packet statistics,
+and a read-only summary of the selected devices. The Receiver token is never displayed.
+
+The pairing code is intentionally hidden when the monitor is opened through a LAN address;
+use the loopback URL above to view or copy it.
+
 ## Two-way audio and public networks
 
 Use a second virtual cable for Teams speaker return: Teams plays to `VoiceMeeter Aux Input`,
