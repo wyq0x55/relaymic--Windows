@@ -17,6 +17,7 @@ type testHub struct {
 	http   *httptest.Server
 	reg    *Registry
 	token  string
+	tokens []string
 }
 
 func newTestHub(t *testing.T) *testHub {
@@ -39,7 +40,7 @@ func newTestHub(t *testing.T) *testHub {
 	}
 	httpSrv := httptest.NewServer(srv.Handler())
 	t.Cleanup(httpSrv.Close)
-	return &testHub{server: srv, http: httpSrv, reg: reg, token: token}
+	return &testHub{server: srv, http: httpSrv, reg: reg, token: token, tokens: []string{token}}
 }
 
 func (h *testHub) wsURL(path string) string {
@@ -462,4 +463,133 @@ func TestPageIsServedAtRoot(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
+}
+
+// newMultiTestHub 造一个挂多台接收端的 Hub，用来验证会话之间互不串台。
+func newMultiTestHub(t *testing.T, names ...string) (*testHub, []string) {
+	t.Helper()
+	tokens := make([]string, 0, len(names))
+	receivers := make([]ReceiverConfig, 0, len(names))
+	for _, name := range names {
+		token, err := NewToken()
+		if err != nil {
+			t.Fatalf("NewToken() error = %v", err)
+		}
+		tokens = append(tokens, token)
+		receivers = append(receivers, ReceiverConfig{Name: name, Token: token})
+	}
+	reg, err := NewRegistry(Config{Receivers: receivers})
+	if err != nil {
+		t.Fatalf("NewRegistry() error = %v", err)
+	}
+	srv, err := NewServer(ServerConfig{
+		Registry:   reg,
+		ICEServers: []ICEServer{{URLs: []string{"stun:stun.example.com:3478"}}},
+		Page:       []byte("<!doctype html><title>RelayMic</title>"),
+	})
+	if err != nil {
+		t.Fatalf("NewServer() error = %v", err)
+	}
+	httpSrv := httptest.NewServer(srv.Handler())
+	t.Cleanup(httpSrv.Close)
+	return &testHub{server: srv, http: httpSrv, reg: reg, tokens: tokens}, tokens
+}
+
+// pairWith 让一台接收端和自己的发送端配成一对，返回发送端和两侧的配对消息。
+func (h *testHub) pairWith(t *testing.T, receiver *wsClient) (*wsClient, Message, Message) {
+	t.Helper()
+	waiting := receiver.recv()
+	if waiting.Type != TypeWaiting {
+		t.Fatalf("receiver first message = %q, want %q", waiting.Type, TypeWaiting)
+	}
+	sender, _, err := h.dialSender(t, h.origin())
+	if err != nil {
+		t.Fatalf("dialSender() error = %v", err)
+	}
+	sender.send(Message{Type: TypePair, Code: waiting.Code})
+	paired := sender.recv()
+	if paired.Type != TypePaired {
+		t.Fatalf("sender paired = %+v, want %q", paired, TypePaired)
+	}
+	joined := receiver.recv()
+	if joined.Type != TypeJoined {
+		t.Fatalf("receiver joined = %+v, want %q", joined, TypeJoined)
+	}
+	return sender, paired, joined
+}
+
+// expectSDP 断言收到的就是这条 SDP。
+//
+// 串台的检测靠内容而不是"读超时"：coder/websocket 读超时会直接关掉连接，
+// 用超时去证明"没收到"会把后面要用的连接一起毁掉。
+func expectSDP(t *testing.T, got Message, wantType string, want json.RawMessage) {
+	t.Helper()
+	if got.Type != wantType {
+		t.Fatalf("消息类型 = %q（%s），want %q", got.Type, got.Error, wantType)
+	}
+	if string(got.SDP) != string(want) {
+		t.Fatalf("SDP = %s，want %s（疑似串台）", got.SDP, want)
+	}
+}
+
+func TestConcurrentSessionsStayIsolated(t *testing.T) {
+	hub, tokens := newMultiTestHub(t, "A-PC", "B-PC")
+
+	recvA, _, err := hub.dialReceiver(t, tokens[0])
+	if err != nil {
+		t.Fatalf("dialReceiver(A) error = %v", err)
+	}
+	senderA, pairedA, _ := hub.pairWith(t, recvA)
+
+	recvB, _, err := hub.dialReceiver(t, tokens[1])
+	if err != nil {
+		t.Fatalf("dialReceiver(B) error = %v", err)
+	}
+	senderB, pairedB, _ := hub.pairWith(t, recvB)
+
+	if pairedA.Session == pairedB.Session {
+		t.Fatalf("两条会话共用了 session id %q", pairedA.Session)
+	}
+
+	// A 的 offer 只能到 A 的接收端。
+	offerA := json.RawMessage(`{"type":"offer","sdp":"v=0 A"}`)
+	senderA.send(Message{Type: TypeOffer, SDP: offerA})
+	expectSDP(t, recvA.recv(), TypeOffer, offerA)
+
+	// A 的 answer 只能到 A 的发送端。
+	answerA := json.RawMessage(`{"type":"answer","sdp":"v=0 A answer"}`)
+	recvA.send(Message{Type: TypeAnswer, Session: pairedA.Session, SDP: answerA})
+	expectSDP(t, senderA.recv(), TypeAnswer, answerA)
+
+	// B 走一轮完整往返：如果 A 的 offer/answer 被串过来，这里读到的就不是自己的 SDP。
+	offerB := json.RawMessage(`{"type":"offer","sdp":"v=0 B"}`)
+	senderB.send(Message{Type: TypeOffer, SDP: offerB})
+	expectSDP(t, recvB.recv(), TypeOffer, offerB)
+
+	answerB := json.RawMessage(`{"type":"answer","sdp":"v=0 B answer"}`)
+	recvB.send(Message{Type: TypeAnswer, Session: pairedB.Session, SDP: answerB})
+	expectSDP(t, senderB.recv(), TypeAnswer, answerB)
+
+	// A 的发送端断开：B 的会话必须原样继续。
+	if err := senderA.conn.Close(websocket.StatusNormalClosure, ""); err != nil {
+		t.Fatalf("close sender A: %v", err)
+	}
+	offerB2 := json.RawMessage(`{"type":"offer","sdp":"v=0 B after A left"}`)
+	senderB.send(Message{Type: TypeOffer, SDP: offerB2})
+	expectSDP(t, recvB.recv(), TypeOffer, offerB2)
+
+	// A 的接收端重连拿新码，也不能影响 B 的会话。
+	if err := recvA.conn.Close(websocket.StatusNormalClosure, ""); err != nil {
+		t.Fatalf("close receiver A: %v", err)
+	}
+	recvA2, _, err := hub.dialReceiver(t, tokens[0])
+	if err != nil {
+		t.Fatalf("re-dial receiver A: %v", err)
+	}
+	if waiting := recvA2.recv(); waiting.Type != TypeWaiting || len(waiting.Code) != PairingCodeDigits {
+		t.Fatalf("A 重连后第一条消息 = %+v，want 带新配对码的 %q", waiting, TypeWaiting)
+	}
+	offerB3 := json.RawMessage(`{"type":"offer","sdp":"v=0 B after A reconnect"}`)
+	senderB.send(Message{Type: TypeOffer, SDP: offerB3})
+	expectSDP(t, recvB.recv(), TypeOffer, offerB3)
 }
