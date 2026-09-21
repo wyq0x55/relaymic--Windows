@@ -172,6 +172,46 @@ func TestReceiverGetsCodeAfterAuthenticating(t *testing.T) {
 	}
 }
 
+func TestPairedEndpointsReceiveSameEphemeralTURNCredentials(t *testing.T) {
+	hub := newTestHub(t)
+	issuer, err := NewTurnIssuer(
+		[]string{"turn:turn.example.com:3478?transport=udp"},
+		[]byte("shared-secret"),
+		10*time.Minute,
+	)
+	if err != nil {
+		t.Fatalf("NewTurnIssuer() error = %v", err)
+	}
+	issuer.now = func() time.Time { return time.Unix(1_700_000_000, 0) }
+	hub.server.turnIssuer = issuer
+
+	receiver, _, err := hub.dialReceiver(t, hub.token)
+	if err != nil {
+		t.Fatalf("dialReceiver() error = %v", err)
+	}
+	waiting := receiver.recv()
+	sender, _, err := hub.dialSender(t, hub.origin())
+	if err != nil {
+		t.Fatalf("dialSender() error = %v", err)
+	}
+	sender.send(Message{Type: TypePair, Code: waiting.Code})
+	paired := sender.recv()
+	joined := receiver.recv()
+
+	if paired.Type != TypePaired || joined.Type != TypeJoined {
+		t.Fatalf("pair messages = %+v / %+v", paired, joined)
+	}
+	if len(paired.ICEServers) != 2 || len(joined.ICEServers) != 2 {
+		t.Fatalf("TURN-enabled pair must include STUN and TURN: %+v / %+v", paired.ICEServers, joined.ICEServers)
+	}
+	if paired.ICEServers[1] != joined.ICEServers[1] {
+		t.Fatalf("sender and receiver got different TURN credentials: %+v / %+v", paired.ICEServers[1], joined.ICEServers[1])
+	}
+	if got, want := paired.ICEServers[1].Username, "1700000600:"+paired.Session; got != want {
+		t.Fatalf("TURN username = %q, want %q", got, want)
+	}
+}
+
 func TestReceiverWithoutTokenIsRejected(t *testing.T) {
 	hub := newTestHub(t)
 	if _, resp, err := hub.dialReceiver(t, ""); err == nil {

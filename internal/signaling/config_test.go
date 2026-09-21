@@ -81,6 +81,25 @@ func TestLoadFileRejectsBadTokenShape(t *testing.T) {
 	}
 }
 
+func TestLoadFileRejectsLongLivedTURNCredentialsInPublicICEConfig(t *testing.T) {
+	token, err := NewToken()
+	if err != nil {
+		t.Fatalf("NewToken() error = %v", err)
+	}
+	path := writeConfig(t, `{
+  "listen": ":443",
+  "iceServers": [{
+    "urls": ["turn:turn.example.com:3478"],
+    "username": "long-lived-user",
+    "credential": "long-lived-password"
+  }],
+  "receivers": [{"name": "company-windows", "token": "`+token+`"}]
+}`)
+	if _, err := LoadFile(path); err == nil {
+		t.Fatal("LoadFile() accepted public long-lived TURN credentials")
+	}
+}
+
 func TestLoadFileReportsMissingFile(t *testing.T) {
 	_, err := LoadFile(filepath.Join(t.TempDir(), "absent.json"))
 	if err == nil {
