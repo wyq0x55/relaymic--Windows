@@ -55,6 +55,10 @@
 
 ## Layout
 
+- `cmd/relaymic`: 唯一入口。不带参数起本机应用，带子命令跑对应命令。
+- `internal/cli`: 子命令分发与用法；命令表在 `commands.go`。
+- `internal/app/*`: 各命令的实现。`cmd/*` 只是老名字下的薄壳。
+- `internal/browser`: 用系统默认浏览器打开控制台页面。
 - `cmd/signaling`: public control plane (HTTPS/WSS 443, pairing, SDP relay).
 - `cmd/receiver`: dials the control plane, answers offers, writes to the virtual device.
 - `cmd/probe`: device listing and virtual-cable tone check.

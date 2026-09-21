@@ -17,11 +17,13 @@ const DefaultBufferMS = 150
 
 // Config 是接收端保存在本机的设置。
 //
-// 它刻意不含 token：token 是长期身份凭据，单独存一个文件，文件权限就是它的
-// 边界。也不含 STUN/TURN：会话 ICE 由 Hub 在配对后下发，本机再存一份静态
-// 配置只会多出一条会和 Hub 冲突的路径。
+// 它刻意不含 token 本身：token 是长期身份凭据，单独存一个文件，文件权限就是
+// 它的边界。这里只存那个文件的路径 —— 路径不是秘密，而"敲 relaymic 就能用"
+// 需要它被记住。也不含 STUN/TURN：会话 ICE 由 Hub 在配对后下发，本机再存一份
+// 静态配置只会多出一条会和 Hub 冲突的路径。
 type Config struct {
 	Hub            string  `json:"hub"`
+	TokenFile      string  `json:"tokenFile,omitempty"`
 	Device         string  `json:"device"`
 	ReturnDevice   string  `json:"returnDevice,omitempty"`
 	ReturnLoopback string  `json:"returnLoopback,omitempty"`

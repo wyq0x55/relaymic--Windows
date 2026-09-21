@@ -66,6 +66,25 @@ certificate and a public 443 → run `relaymic-receiver` on the machine with the
 device and note the pairing code it prints → open `https://<your signalling host>` in a browser
 anywhere, type that code, allow the microphone.
 
+## One entry point
+
+There is a single entry point: `relaymic`.
+
+```bash
+relaymic                       # starts the local app: receiver + console page, opens your browser
+relaymic receiver -hub wss://… # the same thing with every argument spelled out
+relaymic help                  # every subcommand
+relaymic version
+```
+
+With no arguments it binds `127.0.0.1:7420` and opens the console in your default browser:
+the pairing code, the link mode, the levels and the recent log all live on that page, and
+the Hub address and audio devices are editable there. `-monitor ""` means "no console".
+
+`relaymic receiver|sender|signaling|probe|selfcheck|turncheck|stuncheck` map to the old
+`relaymic-receiver`, `relaymic-sender`, … binaries. Those names still exist; they are thin
+shells now.
+
 ## What this is, honestly
 
 **This is the author's own tool, opened up — not a polished consumer product.**

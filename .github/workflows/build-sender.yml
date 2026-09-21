@@ -50,11 +50,15 @@ jobs:
           go build -tags nolibopusfile -ldflags "-H windowsgui -extldflags -static" -o 远程麦克风.exe ./cmd/sender-gui
           # Receiver 与 sender 共用 malgo/miniaudio；Windows 下会走原生音频后端。
           go build -tags nolibopusfile -ldflags "-extldflags -static" -o relaymic-receiver.exe ./cmd/receiver
+          # 唯一入口：不带参数起本机应用（接收端 + 控制台），带子命令跑对应命令。
+          # 版本号打进二进制，用户报问题时能说清跑的是哪一份。
+          go build -tags nolibopusfile -ldflags "-extldflags -static -X github.com/hueshu/relaymic/internal/cli.Version=${GITHUB_SHA::7}" -o relaymic.exe ./cmd/relaymic
 
       - uses: actions/upload-artifact@v4
         with:
           name: relaymic-windows
           path: |
+            relaymic.exe
             relaymic-sender.exe
             远程麦克风.exe
             relaymic-receiver.exe

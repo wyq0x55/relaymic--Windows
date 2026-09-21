@@ -53,6 +53,24 @@ Mac 上 `brew install opus && brew install --cask blackhole-2ch` →
 `go build -tags nolibopusfile ./cmd/receiver` → 跑起来 → 在另一台设备的浏览器打开
 `https://<mac 的 tailnet IP>:7420`。
 
+## 命令行入口
+
+只有一个入口：`relaymic`。
+
+```bash
+relaymic                       # 起本机应用：接收端 + 控制台页面，并打开浏览器
+relaymic receiver -hub wss://… # 同一件事，把参数写全
+relaymic help                  # 全部子命令
+relaymic version
+```
+
+不带参数时它绑 `127.0.0.1:7420` 并用默认浏览器打开控制台：配对码、链路模式、电平、
+最近日志都在那一页上，Hub 地址和音频设备也能在页面上改。不想要控制台就显式写
+`-monitor ""`。
+
+`relaymic receiver|sender|signaling|probe|selfcheck|turncheck|stuncheck` 对应原来的
+`relaymic-receiver`、`relaymic-sender` 等二进制；那些老名字还在，现在只是一层壳。
+
 ## 现状
 
 **这是作者自用工具的开源版本，不是打磨过的消费级产品。**
@@ -126,6 +144,12 @@ go test  -tags nolibopusfile ./internal/...
 
 `-tags nolibopusfile` 是必须的——只用编解码，不读 `.opus` 文件，不加会去链接
 libopusfile 然后失败。
+
+要一个单文件 exe（静态链接 opus，不用带 DLL）：
+
+```bash
+go build -tags nolibopusfile -ldflags "-extldflags -static" -o relaymic.exe ./cmd/relaymic
+```
 
 ## 许可
 

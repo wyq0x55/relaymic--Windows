@@ -99,6 +99,23 @@ func TestLoadRejectsUnknownFields(t *testing.T) {
 	}
 }
 
+// 凭据本身永远不进这个文件：存的是它的路径，权限边界还是那个文件。
+func TestConfigStoresTheTokenPathNotTheToken(t *testing.T) {
+	base := Default("windows")
+	base.TokenFile = `C:\relaymic\receiver-token.txt`
+	body, err := json.Marshal(base)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if !strings.Contains(string(body), "tokenFile") {
+		t.Fatalf("配置里没有 tokenFile：%s", body)
+	}
+	// 直接往配置里写 token 这条路不该存在。
+	if _, err := Parse([]byte(`{"device":"cable input","token":"secret"}`), base); err == nil {
+		t.Fatal("Parse() 接受了写进配置的 token")
+	}
+}
+
 func TestDefaultPathSitsUnderTheUserConfigDir(t *testing.T) {
 	path := DefaultPath()
 	if filepath.Base(path) != "config.json" {

@@ -166,6 +166,9 @@
         <label>Hub 地址
           <input id="cfgHub" type="text" spellcheck="false" placeholder="wss://主机:9443/ws/receiver">
         </label>
+        <label>接收端凭据文件（只存路径，token 本身不进配置文件）
+          <input id="cfgTokenFile" type="text" spellcheck="false" placeholder="C:\relaymic\receiver-token.txt">
+        </label>
         <div class="two">
           <label>输出设备（写进虚拟麦克风）
             <input id="cfgDevice" type="text" spellcheck="false" placeholder="CABLE Input">
@@ -287,6 +290,7 @@ function renderPairing(pairing) {
 
 function fillConfig(cfg) {
   $('cfgHub').value = cfg.hub || '';
+  $('cfgTokenFile').value = cfg.tokenFile || '';
   $('cfgDevice').value = cfg.device || '';
   $('cfgReturnDevice').value = cfg.returnDevice || '';
   $('cfgReturnLoopback').value = cfg.returnLoopback || '';
@@ -301,6 +305,7 @@ function fillConfig(cfg) {
 function readConfig() {
   return {
     hub: $('cfgHub').value.trim(),
+    tokenFile: $('cfgTokenFile').value.trim(),
     device: $('cfgDevice').value.trim(),
     returnDevice: $('cfgReturnDevice').value.trim(),
     returnLoopback: $('cfgReturnLoopback').value.trim(),
