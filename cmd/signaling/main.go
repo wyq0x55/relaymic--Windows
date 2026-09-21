@@ -9,6 +9,7 @@ package main
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -16,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/hueshu/relaymic/internal/signaling"
@@ -27,7 +29,8 @@ func main() {
 	configPath := flag.String("config", "", "配置文件路径（JSON）；用 -gen-token 时不需要")
 	addr := flag.String("addr", "", "覆盖监听地址，默认取配置文件里的 listen")
 	genToken := flag.Bool("gen-token", false, "生成一个接收端 token 并退出")
-	genReceiver := flag.String("gen-receiver", "", "生成一段接收端配置（名字用这个值）并退出")
+	var genReceivers stringList
+	flag.Var(&genReceivers, "gen-receiver", "生成一台接收端配置（可重复，名字用这个值）并退出")
 	selfSignedDir := flag.String("self-signed-dir", "", "本地自测：在该目录生成自签证书并直接启用 TLS")
 	plain := flag.Bool("plain", false, "本地自测：用 http 而非 https；浏览器只在 localhost 上才给麦克风权限")
 	flag.Parse()
@@ -37,14 +40,28 @@ func main() {
 	log.Println("本程序不提供任何担保，遵循 AGPL-3.0 发布。")
 	log.Println("源码：https://github.com/hueshu/relaymic")
 
-	if *genToken || *genReceiver != "" {
+	if *genToken || len(genReceivers) > 0 {
+		if len(genReceivers) > 0 {
+			receivers := make([]signaling.ReceiverConfig, 0, len(genReceivers))
+			for _, name := range genReceivers {
+				token, err := signaling.NewToken()
+				if err != nil {
+					log.Fatalln("生成 token 失败:", err)
+				}
+				receivers = append(receivers, signaling.ReceiverConfig{Name: name, Token: token})
+			}
+			// 直接输出数组：粘到 "receivers": 后面就是合法 JSON，
+			// 一次生成多台也不用自己拼括号和逗号。
+			data, err := json.MarshalIndent(receivers, "", "  ")
+			if err != nil {
+				log.Fatalln("编码接收端配置失败:", err)
+			}
+			fmt.Println(string(data))
+			return
+		}
 		token, err := signaling.NewToken()
 		if err != nil {
 			log.Fatalln("生成 token 失败:", err)
-		}
-		if *genReceiver != "" {
-			fmt.Printf("  {\"name\": %q, \"token\": %q}\n", *genReceiver, token)
-			return
 		}
 		fmt.Println(token)
 		return
@@ -182,4 +199,14 @@ func localIPv4() []string {
 		}
 	}
 	return ips
+}
+
+// stringList 让一个 flag 可以重复出现（-gen-receiver A -gen-receiver B）。
+type stringList []string
+
+func (l *stringList) String() string { return strings.Join(*l, ",") }
+
+func (l *stringList) Set(value string) error {
+	*l = append(*l, value)
+	return nil
 }

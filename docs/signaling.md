@@ -91,8 +91,22 @@ WebSocket 为同一个 session 下发短期 TURN 凭据；公开端点永远不�
 relaymic-signaling -gen-receiver 公司电脑
 ```
 
-输出一段可直接粘进配置的 JSON。token 只在这里出现一次，请存到接收端的
-`-token-file` 里（文件权限就是凭据的权限边界；命令行参数会出现在进程列表里）。
+一次给多台机器生成就重复这个参数，输出直接就是 `receivers` 数组：
+
+```bash
+relaymic-signaling -gen-receiver 张三-PC -gen-receiver 李四-PC
+```
+
+```json
+[
+  {"name": "张三-PC", "token": "..."},
+  {"name": "李四-PC", "token": "..."}
+]
+```
+
+token 只在这里出现一次，请存到各自接收端的 `-token-file` 里（文件权限就是凭据的
+权限边界；命令行参数会出现在进程列表里）。每台机器一份 token，互不影响：
+Hub 按接收端隔离配对码和会话，多台机器可以同时各自通话。
 
 ### 2. 配置文件
 
@@ -214,3 +228,4 @@ Hub 可以开一个隧道端点，让 Receiver 把 TURN/TCP 塞进它已经能�
 - coturn 要在本机监听 TCP（默认 `listening-port=3478` 同时听 UDP 和 TCP），
   且 `listening-ip` 要包含 `127.0.0.1`，否则隧道连不上。
 - 没配 `tunnelTarget` 时端点返回 404；Receiver 不带 `-turn-tunnel` 时行为与之前完全一致。
+
