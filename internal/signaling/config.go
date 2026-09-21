@@ -36,6 +36,9 @@ type TurnConfig struct {
 	URLs                 []string `json:"urls"`
 	AuthSecretFile       string   `json:"authSecretFile"`
 	CredentialTTLSeconds int      `json:"credentialTTLSeconds,omitempty"`
+	// TunnelTarget 是隧道端点要转发到的本机地址，例如 127.0.0.1:3478。
+	// 留空表示不开放隧道；接收端只走 HTTP 代理时靠它把 TURN/TCP 送出网。
+	TunnelTarget string `json:"tunnelTarget,omitempty"`
 }
 
 // LoadFile 读取并做结构校验。
@@ -111,6 +114,14 @@ func (c *FileConfig) TurnIssuer() (*TurnIssuer, error) {
 		ttl = time.Duration(c.Turn.CredentialTTLSeconds) * time.Second
 	}
 	return NewTurnIssuer(c.Turn.URLs, []byte(strings.TrimSpace(string(secret))), ttl)
+}
+
+// TunnelTarget 返回 TURN 隧道要转发的本机地址；留空表示不开放隧道端点。
+func (c *FileConfig) TunnelTarget() string {
+	if c.Turn == nil {
+		return ""
+	}
+	return strings.TrimSpace(c.Turn.TunnelTarget)
 }
 
 // ErrNoTLS 表示既没给证书、也没允许明文，Hub 无法安全启动。

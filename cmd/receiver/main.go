@@ -34,6 +34,7 @@ import (
 	"github.com/hueshu/relaymic/internal/receiverconfig"
 	"github.com/hueshu/relaymic/internal/rtc"
 	"github.com/hueshu/relaymic/internal/signaling"
+	"github.com/hueshu/relaymic/internal/turnshim"
 	"github.com/hueshu/relaymic/internal/web"
 	"github.com/pion/webrtc/v4"
 )
@@ -70,6 +71,7 @@ func main() {
 	turnUser := flag.String("turn-user", "", "TURN 用户名")
 	turnPass := flag.String("turn-pass", "", "TURN 密码")
 	forceRelay := flag.Bool("force-relay", false, "只用 TURN 中继候选，用于验证中继链路")
+	turnTunnel := flag.Bool("turn-tunnel", false, "把 TURN 流量经控制面隧道转发（只放行 HTTP 代理的网络需要）")
 	// 默认关：DTX 的 VAD 会把低电平语音误判成静音掐掉，实测每秒断一次。
 	// 语音识别场景带宽根本不是瓶颈，没有理由为省包冒断字的险。
 	dtx := flag.Bool("dtx", false, "让发送端静音时停发包（省带宽，但可能掐掉轻声）")
@@ -403,6 +405,17 @@ func main() {
 		log.Fatalln(err)
 	}
 	hubCtx, stopHub := context.WithCancel(context.Background())
+	// TURN 隧道：只放行 HTTP 代理的网络里，TURN 客户端自己出不去。
+	// 在回环地址上开一个入口，把 TURN/TCP 塞进这条已经能通的 WSS。
+	turnTunnelAddr := ""
+	if *turnTunnel {
+		shim, err := turnshim.Start(hubCtx, "127.0.0.1:0", client.DialTunnel)
+		if err != nil {
+			log.Fatalln("启动 TURN 隧道失败:", err)
+		}
+		turnTunnelAddr = shim.Addr()
+		log.Printf("TURN 隧道: %s → %s", turnTunnelAddr, *hub)
+	}
 	defer stopHub()
 	go func() {
 		err := client.Run(hubCtx, hubclient.Handlers{
@@ -418,7 +431,11 @@ func main() {
 			OnJoined: func(session string, sessionICE []signaling.ICEServer) {
 				pairing.Clear()
 				if len(sessionICE) > 0 {
-					receiver.SetICEServers(hubICEServers(sessionICE))
+					servers := sessionICE
+					if turnTunnelAddr != "" {
+						servers = tunnelICEServers(sessionICE, turnTunnelAddr)
+					}
+					receiver.SetICEServers(hubICEServers(servers))
 					log.Printf("已应用控制面 ICE 配置（%d 项）", len(sessionICE))
 				}
 				log.Println("发送端已接入")
@@ -712,6 +729,27 @@ func hubICEServers(servers []signaling.ICEServer) []webrtc.ICEServer {
 			Username:   server.Username,
 			Credential: server.Credential,
 		})
+	}
+	return out
+}
+
+// tunnelICEServers 把 TURN 地址换成本机的隧道入口。
+//
+// 只有这台机器改走隧道 —— 它没别的路；远端浏览器仍用 Hub 下发的原始地址。
+// STUN 保持原样：它失败只是拖慢收集，不是连不上的原因。
+func tunnelICEServers(servers []signaling.ICEServer, localAddr string) []signaling.ICEServer {
+	out := make([]signaling.ICEServer, 0, len(servers))
+	for _, server := range servers {
+		urls := make([]string, 0, len(server.URLs))
+		for _, rawURL := range server.URLs {
+			lower := strings.ToLower(strings.TrimSpace(rawURL))
+			if strings.HasPrefix(lower, "turn:") || strings.HasPrefix(lower, "turns:") {
+				urls = append(urls, "turn:"+localAddr+"?transport=tcp")
+				continue
+			}
+			urls = append(urls, rawURL)
+		}
+		out = append(out, signaling.ICEServer{URLs: urls, Username: server.Username, Credential: server.Credential})
 	}
 	return out
 }

@@ -183,3 +183,34 @@ HTTPS。`-self-signed-dir <目录>` 可以在没有证书的情况下用自签�
 - **`cmd/sender`、`cmd/sender-gui`、`cmd/selfcheck` 仍说旧的局域网协议**，
   它们的目标是已被移除的 `https://<host>:7420/offer`。浏览器页面是当前唯一支持的
   发送端；这几个命令和 `internal/discover` 的去留需要单独决定。
+
+## 只放行 HTTP 代理的网络（TURN 隧道）
+
+有些公司网络不允许任何直连出网，只放行一个 HTTP 代理：DNS、STUN、TURN 的 UDP/TCP
+全部打不通，只有走代理的 HTTPS/WSS 能出去。这种情况下 TURN 永远拿不到中继地址 ——
+TURN 客户端不会使用 HTTP 代理。
+
+Hub 可以开一个隧道端点，让 Receiver 把 TURN/TCP 塞进它已经能用的那条 WSS：
+
+1. Hub 配置加 `turn.tunnelTarget`，指向 coturn 的本机 TCP 监听地址：
+
+   ```json
+   "turn": {
+     "urls": ["turn:turn.example.com:3478?transport=udp"],
+     "authSecretFile": "/etc/relaymic/turn-auth-secret",
+     "tunnelTarget": "127.0.0.1:3478"
+   }
+   ```
+
+2. Receiver 加 `-turn-tunnel`。它在回环地址上开一个 TCP 入口，把 ICE 里的 TURN 地址
+   换成本机入口（`turn:127.0.0.1:<port>?transport=tcp`），每条连接经 `/ws/tunnel`
+   隧道到 Hub，再由 Hub 转给 coturn。
+
+边界：
+
+- 隧道只对通过 token 认证的 Receiver 开放，且只能转发到配置里写死的那个地址。
+- 音频仍是端到端 DTLS-SRTP 加密：Hub 只看到 TURN 协议字节，看不到内容。
+- 远端浏览器不受影响，照常用 Hub 下发的原始 TURN 地址。
+- coturn 要在本机监听 TCP（默认 `listening-port=3478` 同时听 UDP 和 TCP），
+  且 `listening-ip` 要包含 `127.0.0.1`，否则隧道连不上。
+- 没配 `tunnelTarget` 时端点返回 404；Receiver 不带 `-turn-tunnel` 时行为与之前完全一致。

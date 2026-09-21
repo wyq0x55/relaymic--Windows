@@ -329,3 +329,30 @@ C:\\workspeace\\relaymic\\bin\\relaymic-receiver.exe `
 回环地址显示，不会写入运行日志。随后在任意设备打开 `https://SIGNAL_FQDN`，输入配对码，授权
 麦克风。先确认直连路径；再用 `-force-relay` 验证经 coturn 的双向通话，最后宣布公网
 受限网络支持完成。
+
+## 只放行 HTTP 代理的公司网络
+
+若 Receiver 所在网络只放行 HTTP 代理（DNS/STUN/TURN 的 UDP 与直连 TCP 全部不通），
+按上面的常规接法一定失败：TURN 客户端不会使用代理。改用 TURN 隧道：
+
+1. Hub 的 `signaling.json` 里给 `turn` 加一项，指向 coturn 本机 TCP 监听：
+
+   ```json
+   "tunnelTarget": "127.0.0.1:3478"
+   ```
+
+   同时确认 coturn 的 `listening-ip` 包含 `127.0.0.1`（只绑公网 IP 时隧道连不上）。
+
+2. Receiver 启动参数加 `-turn-tunnel`，其余不变：
+
+   ```powershell
+   relaymic-receiver.exe -hub "wss://SIGNAL_FQDN/ws/receiver" `
+     -token-file "C:\relaymic\receiver-token.txt" `
+     -device "CABLE Input" -return-device "VoiceMeeter Aux Output" `
+     -monitor "127.0.0.1:7420" -turn-tunnel -force-relay
+   ```
+
+3. 验收：Receiver 日志出现 `TURN 隧道: 127.0.0.1:<port> → wss://...`，配对后链路显示
+   为 relay，且音频双向可通。隧道走的是 9443 的 WSS，不需要额外放行端口。
+
+注意：这只解决 Receiver 侧。发送端（浏览器）若也在同样的受限网络里，仍需各自的出口。

@@ -30,6 +30,9 @@ type ServerConfig struct {
 	ICEServers []ICEServer
 	// TurnIssuer 为成功配对的双方签发同一组短期 coturn REST API 凭据。
 	TurnIssuer *TurnIssuer
+	// TunnelTarget 是 TURN 隧道端点要转发到的本机地址，例如 127.0.0.1:3478。
+	// 留空表示不开放隧道端点。
+	TunnelTarget string
 	// Page 是发送端页面。为空则根路径返回 404。
 	Page []byte
 	// AllowedOrigins 是允许发起 WebSocket 的 Origin host 白名单。
@@ -48,14 +51,15 @@ type ServerConfig struct {
 // 它只做三件事：认证接收端、用配对码把发送端接到某台接收端上、原样转发 SDP。
 // 音频永远不经过这里。
 type Server struct {
-	registry    *Registry
-	ice         []ICEServer
-	turnIssuer  *TurnIssuer
-	page        []byte
-	origins     []string
-	maxAttempts int
-	writeTime   time.Duration
-	logger      *log.Logger
+	registry     *Registry
+	ice          []ICEServer
+	turnIssuer   *TurnIssuer
+	tunnelTarget string
+	page         []byte
+	origins      []string
+	maxAttempts  int
+	writeTime    time.Duration
+	logger       *log.Logger
 
 	mu        sync.Mutex
 	receivers map[string]*receiverConn
@@ -94,16 +98,17 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		return nil, errors.New("signaling: ServerConfig.Registry 不能为空")
 	}
 	s := &Server{
-		registry:    cfg.Registry,
-		ice:         cfg.ICEServers,
-		turnIssuer:  cfg.TurnIssuer,
-		page:        cfg.Page,
-		origins:     cfg.AllowedOrigins,
-		maxAttempts: cfg.MaxPairingAttemptsPerConn,
-		writeTime:   cfg.WriteTimeout,
-		logger:      cfg.Logger,
-		receivers:   make(map[string]*receiverConn),
-		sessions:    make(map[string]*session),
+		registry:     cfg.Registry,
+		ice:          cfg.ICEServers,
+		turnIssuer:   cfg.TurnIssuer,
+		tunnelTarget: cfg.TunnelTarget,
+		page:         cfg.Page,
+		origins:      cfg.AllowedOrigins,
+		maxAttempts:  cfg.MaxPairingAttemptsPerConn,
+		writeTime:    cfg.WriteTimeout,
+		logger:       cfg.Logger,
+		receivers:    make(map[string]*receiverConn),
+		sessions:     make(map[string]*session),
 	}
 	if s.maxAttempts <= 0 {
 		s.maxAttempts = MaxPairingAttemptsPerConn
@@ -131,6 +136,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/ice", s.handleICE)
 	mux.HandleFunc("GET /ws/receiver", s.handleReceiver)
 	mux.HandleFunc("GET /ws/sender", s.handleSender)
+	mux.HandleFunc("GET "+TunnelPath, s.handleTunnel)
 	mux.HandleFunc("GET /", s.handlePage)
 	return mux
 }

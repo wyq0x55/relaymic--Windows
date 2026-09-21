@@ -69,6 +69,7 @@ func main() {
 		Registry:       registry,
 		ICEServers:     cfg.ICEServers,
 		TurnIssuer:     turnIssuer,
+		TunnelTarget:   cfg.TunnelTarget(),
 		Page:           web.SenderHTML,
 		AllowedOrigins: cfg.AllowedOrigins,
 	})
