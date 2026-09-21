@@ -204,11 +204,37 @@ func TestPairedEndpointsReceiveSameEphemeralTURNCredentials(t *testing.T) {
 	if len(paired.ICEServers) != 2 || len(joined.ICEServers) != 2 {
 		t.Fatalf("TURN-enabled pair must include STUN and TURN: %+v / %+v", paired.ICEServers, joined.ICEServers)
 	}
-	if paired.ICEServers[1] != joined.ICEServers[1] {
+	if paired.ICEServers[1].Username != joined.ICEServers[1].Username ||
+		paired.ICEServers[1].Credential != joined.ICEServers[1].Credential ||
+		strings.Join(paired.ICEServers[1].URLs, ",") != strings.Join(joined.ICEServers[1].URLs, ",") {
 		t.Fatalf("sender and receiver got different TURN credentials: %+v / %+v", paired.ICEServers[1], joined.ICEServers[1])
 	}
 	if got, want := paired.ICEServers[1].Username, "1700000600:"+paired.Session; got != want {
 		t.Fatalf("TURN username = %q, want %q", got, want)
+	}
+}
+
+func TestPublicICEEndpointDoesNotExposeSessionTURNCredentials(t *testing.T) {
+	hub := newTestHub(t)
+	issuer, err := NewTurnIssuer([]string{"turn:turn.example.com:3478"}, []byte("shared-secret"), time.Minute)
+	if err != nil {
+		t.Fatalf("NewTurnIssuer() error = %v", err)
+	}
+	hub.server.turnIssuer = issuer
+
+	resp, err := http.Get(hub.http.URL + "/api/ice")
+	if err != nil {
+		t.Fatalf("GET /api/ice: %v", err)
+	}
+	defer resp.Body.Close()
+	var body struct {
+		ICEServers []ICEServer `json:"iceServers"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode ICE response: %v", err)
+	}
+	if len(body.ICEServers) != 1 || body.ICEServers[0].Username != "" || body.ICEServers[0].Credential != "" {
+		t.Fatalf("public ICE response leaked session TURN credentials: %+v", body.ICEServers)
 	}
 }
 

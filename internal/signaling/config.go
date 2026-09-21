@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
+	"time"
 )
 
 // FileConfig 是 Hub 的配置文件形态。
@@ -22,8 +24,18 @@ type FileConfig struct {
 	AllowedOrigins []string `json:"allowedOrigins"`
 	// ICEServers 通过 HTTPS 发给浏览器；#3 接上 TURN 后填在这里。
 	ICEServers []ICEServer `json:"iceServers"`
+	// Turn 是 coturn 的短期凭据签发配置。共享密钥只从文件读取，绝不出现在
+	// 可被浏览器读取的 iceServers 或 JSON 配置里。
+	Turn *TurnConfig `json:"turn,omitempty"`
 	// Receivers 是允许连进来的接收端。
 	Receivers []ReceiverConfig `json:"receivers"`
+}
+
+// TurnConfig 是 Hub 读取 coturn REST API 共享密钥所需的最小配置。
+type TurnConfig struct {
+	URLs                 []string `json:"urls"`
+	AuthSecretFile       string   `json:"authSecretFile"`
+	CredentialTTLSeconds int      `json:"credentialTTLSeconds,omitempty"`
 }
 
 // LoadFile 读取并做结构校验。
@@ -46,7 +58,31 @@ func LoadFile(path string) (*FileConfig, error) {
 	if len(cfg.Receivers) == 0 {
 		return nil, fmt.Errorf("配置 %s: 至少要配一台接收端", path)
 	}
+	if err := validatePublicICEServers(cfg.ICEServers); err != nil {
+		return nil, fmt.Errorf("配置 %s: %w", path, err)
+	}
 	return &cfg, nil
+}
+
+func validatePublicICEServers(servers []ICEServer) error {
+	for _, server := range servers {
+		if len(server.URLs) == 0 {
+			return errors.New("iceServers 不能含空地址")
+		}
+		if server.Username != "" || server.Credential != "" {
+			return errors.New("公开 iceServers 不能含凭据；TURN 必须使用 turn.authSecretFile")
+		}
+		for _, rawURL := range server.URLs {
+			url := strings.TrimSpace(rawURL)
+			if url == "" {
+				return errors.New("iceServers 不能含空地址")
+			}
+			if strings.HasPrefix(strings.ToLower(url), "turn:") || strings.HasPrefix(strings.ToLower(url), "turns:") {
+				return errors.New("公开 iceServers 不能配置 TURN；请使用 turn.authSecretFile")
+			}
+		}
+	}
+	return nil
 }
 
 // Registry 按配置构造配对状态机。token 形状不对会在这里直接失败。
@@ -56,6 +92,25 @@ func (c *FileConfig) Registry() (*Registry, error) {
 		return nil, err
 	}
 	return reg, nil
+}
+
+// TurnIssuer 从受限文件读取 coturn REST API 共享密钥。未配置 TURN 时返回 nil。
+func (c *FileConfig) TurnIssuer() (*TurnIssuer, error) {
+	if c.Turn == nil {
+		return nil, nil
+	}
+	if c.Turn.AuthSecretFile == "" {
+		return nil, errors.New("turn.authSecretFile 不能为空")
+	}
+	secret, err := os.ReadFile(c.Turn.AuthSecretFile)
+	if err != nil {
+		return nil, fmt.Errorf("读取 TURN 共享密钥: %w", err)
+	}
+	ttl := defaultTurnCredentialTTL
+	if c.Turn.CredentialTTLSeconds != 0 {
+		ttl = time.Duration(c.Turn.CredentialTTLSeconds) * time.Second
+	}
+	return NewTurnIssuer(c.Turn.URLs, []byte(strings.TrimSpace(string(secret))), ttl)
 }
 
 // ErrNoTLS 表示既没给证书、也没允许明文，Hub 无法安全启动。

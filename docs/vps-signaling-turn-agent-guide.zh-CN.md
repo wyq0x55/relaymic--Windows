@@ -11,11 +11,12 @@
 
 **不要把 coturn 的长期用户名/密码放进 `signaling.json` 的 `iceServers`。** 当前
 `GET /api/ice` 可被任何打开站点的人读取；长期 TURN 凭据一旦出现在这里，任何人
-都能拿它消耗你的中继流量。当前代码尚未实现「配对成功后给双方下发同一组短期 TURN
-凭据」的运行时链路，因此本次部署分两阶段：
+都能拿它消耗你的中继流量。当前代码在配对成功后给双方下发同一组短期 TURN 凭据，
+因此部署分两阶段：
 
 1. 完成 Signaling 的生产部署，并安装、收紧、外部验证 coturn。
-2. 仅在短期凭据代码和测试合入后，才把 TURN 暴露给 RelayMic 浏览器与 Receiver。
+2. 部署包含短期凭据功能的 RelayMic commit，配置受限共享密钥文件后，用
+   `-force-relay` 验证真实双向中继。
 
 不要把“coturn 服务已启动”说成“RelayMic 已能在对称 NAT 下中继通话”。后者必须通过
 `-force-relay` 的真实双端验证。
@@ -119,7 +120,8 @@ sudo chmod 0755 /opt/relaymic/relaymic-signaling
 使用 Caddy 终止 TLS，RelayMic 只监听回环 HTTP。这样 RelayMic 无需读取证书私钥，
 也不会以 root 身份绑定 `443`。Caddy 原生支持 WebSocket 反向代理。
 
-创建 `/etc/relaymic/signaling.json`，初始只配置 STUN；这里不放 TURN 密码：
+创建 `/etc/relaymic/signaling.json`。`iceServers` 只放公开 STUN；TURN 共享密钥只从
+受限文件读取：
 
 ```json
 {
@@ -128,6 +130,11 @@ sudo chmod 0755 /opt/relaymic/relaymic-signaling
   "iceServers": [
     {"urls": ["stun:stun.cloudflare.com:3478"]}
   ],
+  "turn": {
+    "urls": ["turn:turn.example.com:3478?transport=udp"],
+    "authSecretFile": "/etc/relaymic/turn-auth-secret",
+    "credentialTTLSeconds": 600
+  },
   "receivers": [
     {"name": "company-windows", "token": "REPLACE_WITH_GENERATED_TOKEN"}
   ]
@@ -202,14 +209,15 @@ curl --fail --silent --show-error https://$SIGNAL_FQDN/api/ice
 如 `443` 已被 Nginx、Caddy 或其他服务占用，不要替换它。先报告现有 TLS 终止服务和
 相关站点配置，再由用户选择复用现有反向代理或使用新的域名/端口。
 
-## 第 3 步：安装和收紧 coturn（尚不下发给客户端）
+## 第 3 步：安装和收紧 coturn
 
 生成一个仅保存在 VPS 的随机 TURN REST API 共享密钥：
 
 ```bash
-sudo install -d -o root -g root -m 0700 /etc/turnserver
-sudo sh -c 'umask 077; openssl rand -base64 48 > /etc/turnserver/relaymic-auth-secret'
-sudo chmod 0600 /etc/turnserver/relaymic-auth-secret
+sudo install -d -o root -g relaymic -m 0750 /etc/relaymic
+sudo sh -c 'umask 077; openssl rand -base64 48 > /etc/relaymic/turn-auth-secret'
+sudo chown root:relaymic /etc/relaymic/turn-auth-secret
+sudo chmod 0640 /etc/relaymic/turn-auth-secret
 ```
 
 创建 `/etc/turnserver.conf`。将 `TURN_PUBLIC_IP`、`TURN_FQDN` 替换为真实值；若 VPS
@@ -240,8 +248,9 @@ user-quota=12
 total-quota=48
 ```
 
-`static-auth-secret` 的内容只由 root 读取并写入 root 可读的配置，权限必须为 `0600`。
-不要把它提交、截图、粘贴到聊天或放入 RelayMic JSON。配置后：
+`static-auth-secret` 必须与 `/etc/relaymic/turn-auth-secret` 内容完全相同。让 root 用
+文件重定向写入 coturn 配置，不要把密钥放进命令行、Git、截图、聊天或 RelayMic JSON。
+`turnserver.conf` 仍为 `0600`，而共享密钥文件仅允许 `root` 和 `relaymic` 组读取。配置后：
 
 ```bash
 sudo chmod 0600 /etc/turnserver.conf
@@ -282,23 +291,16 @@ sudo ufw status numbered
    通过；分配成功而转发失败通常意味着 `49160-49200/udp` 未放行。
 4. 验证完成后使该凭据自然过期；不复用它作为生产凭据。
 
-## 第 4 步：TURN 接入 RelayMic 的开发门槛
+## 第 4 步：接入 RelayMic 并验收
 
-安装 coturn 后，**不要**把静态用户名/密码加入 `iceServers`。让开发 Agent 先实现并
-测试以下能力，然后才能启用中继：
-
-1. Hub 从 root/服务账户受限文件读取 coturn REST API 共享密钥；配置文件和日志中不出现该密钥。
-2. 每次成功配对后，Hub 为该 session 生成短期 HMAC TURN 凭据，并将**同一对**凭据发给
-   已认证 Receiver 与已配对 Sender。
-3. Sender 页面在配对成功后才创建 `RTCPeerConnection` 并使用短期 ICE 配置；不能在公开
-   `/api/ice` 中泄露长期或可长期滥用的 TURN 凭据。
-4. Receiver 在收到同 session 的 ICE 配置后、生成 answer 前应用它；不再要求用户将
-   `-turn-user` / `-turn-pass` 写进 Windows 命令行。
-5. 测试覆盖：未配对无法取得 TURN 凭据、两端获得同一到期凭据、过期凭据被 coturn 拒绝、
-   重连/换码不能复用旧凭据，以及真实双端 `-force-relay` 音频收发。
-
-在第 4 步合入前，Signaling 的 `iceServers` 保持仅 STUN；coturn 可保留为已安装且独立
-验证过的基础设施，但不得声称已用于 RelayMic 通话。
+1. 将 `RELAYMIC_REF` 固定到包含短期 TURN 凭据功能的 commit，构建并替换 Hub 二进制。
+2. 保持 `iceServers` 只含 STUN，配置上方的 `turn` 对象；`authSecretFile` 必须能由
+   `relaymic` 服务账户读取。
+3. 重启 Hub 后，`/api/ice` 仍只能返回 STUN，绝不能出现 TURN 用户名或密码。
+4. 配对成功后，Hub 会把同一组 10 分钟 coturn REST API 凭据下发给浏览器和 Receiver；
+   Receiver 不再要求 `-turn-user` / `-turn-pass`。
+5. 在 Windows Receiver 上加 `-force-relay`，完成一次浏览器麦克风和 Teams 回传的双向
+   通话。只有成功才可以宣布对称 NAT 支持完成。
 
 ## 第 5 步：交付验收与 Windows 启动
 
@@ -308,7 +310,7 @@ sudo ufw status numbered
 2. 实际监听端口、UFW/云安全组中新增的精确规则，以及没有触碰的既有服务。
 3. 外网 `turncheck` 的三项成功标记（不带用户名和密码）。
 4. RelayMic commit SHA、二进制 SHA-256、systemd 单元与配置文件权限。
-5. 未完成项：短期 TURN 凭据代码与真实 `-force-relay` E2E，除非已执行并给出对应证据。
+5. 未完成项：真实 `-force-relay` E2E，除非已执行并给出对应证据。
 
 Receiver token 应通过受控渠道复制到 Windows 上一个仅当前用户可读的文件，例如
 `C:\\relaymic\\receiver-token.txt`。随后运行：
@@ -318,9 +320,10 @@ C:\\workspeace\\relaymic\\bin\\relaymic-receiver.exe `
   -hub "wss://SIGNAL_FQDN/ws/receiver" `
   -token-file "C:\\relaymic\\receiver-token.txt" `
   -device "CABLE Input" `
-  -return-device "VoiceMeeter Aux Output"
+  -return-device "VoiceMeeter Aux Output" `
+  -force-relay
 ```
 
 Receiver 打印一次性配对码后，在任意设备打开 `https://SIGNAL_FQDN`，输入配对码，授权
-麦克风。验证时先确认直连路径；短期凭据功能合入后，额外用 `-force-relay` 验证经 coturn
-的双向通话，再宣布公网受限网络支持完成。
+麦克风。先确认直连路径；再用 `-force-relay` 验证经 coturn 的双向通话，最后宣布公网
+受限网络支持完成。

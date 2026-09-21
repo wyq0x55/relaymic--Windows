@@ -61,9 +61,14 @@ func main() {
 	if err != nil {
 		log.Fatalln("配置里的接收端不可用:", err)
 	}
+	turnIssuer, err := cfg.TurnIssuer()
+	if err != nil {
+		log.Fatalln("配置里的 TURN 不可用:", err)
+	}
 	server, err := signaling.NewServer(signaling.ServerConfig{
 		Registry:       registry,
 		ICEServers:     cfg.ICEServers,
+		TurnIssuer:     turnIssuer,
 		Page:           web.SenderHTML,
 		AllowedOrigins: cfg.AllowedOrigins,
 	})
@@ -104,6 +109,9 @@ func main() {
 			log.Println("允许的来源: 同源（未配置 allowedOrigins）")
 		}
 		log.Printf("已配置接收端: %d 台", len(cfg.Receivers))
+		if turnIssuer != nil {
+			log.Println("TURN: 配对后签发短期凭据")
+		}
 
 		var err error
 		if *plain {

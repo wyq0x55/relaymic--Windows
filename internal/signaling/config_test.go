@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeConfig(t *testing.T, body string) string {
@@ -97,6 +98,39 @@ func TestLoadFileRejectsLongLivedTURNCredentialsInPublicICEConfig(t *testing.T) 
 }`)
 	if _, err := LoadFile(path); err == nil {
 		t.Fatal("LoadFile() accepted public long-lived TURN credentials")
+	}
+}
+
+func TestTurnIssuerReadsSecretOnlyFromRestrictedFile(t *testing.T) {
+	token, err := NewToken()
+	if err != nil {
+		t.Fatalf("NewToken() error = %v", err)
+	}
+	secretPath := filepath.Join(t.TempDir(), "turn-secret")
+	if err := os.WriteFile(secretPath, []byte("shared-secret\n"), 0o600); err != nil {
+		t.Fatalf("write TURN secret: %v", err)
+	}
+	escapedSecretPath := strings.ReplaceAll(secretPath, `\`, `\\`)
+	path := writeConfig(t, `{
+  "listen": ":443",
+  "turn": {
+    "urls": ["turn:turn.example.com:3478?transport=udp"],
+    "authSecretFile": "`+escapedSecretPath+`",
+    "credentialTTLSeconds": 600
+  },
+  "receivers": [{"name": "company-windows", "token": "`+token+`"}]
+}`)
+	cfg, err := LoadFile(path)
+	if err != nil {
+		t.Fatalf("LoadFile() error = %v", err)
+	}
+	issuer, err := cfg.TurnIssuer()
+	if err != nil {
+		t.Fatalf("TurnIssuer() error = %v", err)
+	}
+	issuer.now = func() time.Time { return time.Unix(1_700_000_000, 0) }
+	if got, want := issuer.ICEServers("session")[0].Username, "1700000600:session"; got != want {
+		t.Fatalf("username = %q, want %q", got, want)
 	}
 }
 

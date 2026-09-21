@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/hueshu/relaymic/internal/signaling"
 )
 
 func TestReadToken(t *testing.T) {
@@ -111,5 +113,21 @@ func TestDisabledReturnSourceSkipsTheFeedbackCheck(t *testing.T) {
 	}
 	if err := src.checkNotFeedback("CABLE Input"); err != nil {
 		t.Fatalf("checkNotFeedback() on a disabled source error = %v", err)
+	}
+}
+
+func TestHubICEServersPreservesSessionTURNCredentials(t *testing.T) {
+	servers := hubICEServers([]signaling.ICEServer{
+		{URLs: []string{"stun:stun.example.com:3478"}},
+		{URLs: []string{"turn:turn.example.com:3478?transport=udp"}, Username: "1700000600:session", Credential: "short-lived"},
+	})
+	if len(servers) != 2 {
+		t.Fatalf("len(hubICEServers()) = %d, want 2", len(servers))
+	}
+	if got, want := servers[1].Username, "1700000600:session"; got != want {
+		t.Fatalf("TURN username = %q, want %q", got, want)
+	}
+	if got, want := servers[1].Credential, "short-lived"; got != want {
+		t.Fatalf("TURN credential = %q, want %q", got, want)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/hueshu/relaymic/internal/signaling"
 )
 
 // fakeHub 是最小可用的公网控制面替身：认证、发码、转发 offer/answer。
@@ -19,12 +20,13 @@ type fakeHub struct {
 	token  string
 	server *httptest.Server
 
-	mu        sync.Mutex
-	connects  int
-	codes     []string
-	answers   []json.RawMessage
-	sessions  []string
-	dropAfter int // 第几次连接发完码就把连接掐掉，0 表示不掐
+	mu         sync.Mutex
+	connects   int
+	codes      []string
+	answers    []json.RawMessage
+	sessions   []string
+	dropAfter  int // 第几次连接发完码就把连接掐掉，0 表示不掐
+	iceServers []signaling.ICEServer
 }
 
 func newFakeHub(t *testing.T, token string) *fakeHub {
@@ -78,7 +80,7 @@ func (h *fakeHub) handle(w http.ResponseWriter, r *http.Request) {
 	h.mu.Lock()
 	h.sessions = append(h.sessions, session)
 	h.mu.Unlock()
-	if err := write(ctx, conn, map[string]any{"type": "joined", "session": session}); err != nil {
+	if err := write(ctx, conn, map[string]any{"type": "joined", "session": session, "iceServers": h.iceServers}); err != nil {
 		return
 	}
 	if err := write(ctx, conn, map[string]any{"type": "offer", "session": session, "sdp": map[string]any{"type": "offer", "sdp": "v=0 fake"}}); err != nil {
@@ -100,6 +102,33 @@ func (h *fakeHub) handle(w http.ResponseWriter, r *http.Request) {
 		h.mu.Lock()
 		h.answers = append(h.answers, msg.SDP)
 		h.mu.Unlock()
+	}
+}
+
+func TestRunPassesSessionICEServersToReceiver(t *testing.T) {
+	token := "test-token"
+	hub := newFakeHub(t, token)
+	hub.iceServers = []signaling.ICEServer{
+		{URLs: []string{"stun:stun.example.com:3478"}},
+		{URLs: []string{"turn:turn.example.com:3478?transport=udp"}, Username: "1700000600:session", Credential: "short-lived"},
+	}
+	client := newTestClient(t, hub, token)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	joined := make(chan []signaling.ICEServer, 1)
+	go func() {
+		_ = client.Run(ctx, Handlers{
+			OnJoined: func(_ string, servers []signaling.ICEServer) { joined <- servers },
+		})
+	}()
+
+	servers := <-joined
+	if len(servers) != 2 {
+		t.Fatalf("session ICE servers = %+v, want STUN and TURN", servers)
+	}
+	if got, want := servers[1].Credential, "short-lived"; got != want {
+		t.Fatalf("TURN credential = %q, want %q", got, want)
 	}
 }
 
@@ -166,7 +195,7 @@ func TestRunReportsCodeJoinsAndAnswersOffers(t *testing.T) {
 	go func() {
 		_ = client.Run(ctx, Handlers{
 			OnCode:   func(code string, _ time.Duration) { codes <- code },
-			OnJoined: func(session string) { joined <- session },
+			OnJoined: func(session string, _ []signaling.ICEServer) { joined <- session },
 			OnOffer: func(_ context.Context, session string, offer json.RawMessage) (json.RawMessage, error) {
 				if !strings.Contains(string(offer), "v=0 fake") {
 					t.Errorf("offer = %s, want it relayed verbatim", offer)

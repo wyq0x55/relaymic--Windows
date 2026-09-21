@@ -47,13 +47,14 @@ const (
 // SDP 保持原始 JSON：控制面只做搬运，不改写、不解析、不缓存 ——
 // 一旦开始"理解" SDP，就得跟着 WebRTC 的每个版本改，且多一处出错的地方。
 type Message struct {
-	Type      string          `json:"type"`
-	Session   string          `json:"session,omitempty"`
-	SDP       json.RawMessage `json:"sdp,omitempty"`
-	Code      string          `json:"code,omitempty"`
-	Name      string          `json:"name,omitempty"`
-	ExpiresIn int             `json:"expiresInSec,omitempty"`
-	Error     string          `json:"error,omitempty"`
+	Type       string          `json:"type"`
+	Session    string          `json:"session,omitempty"`
+	SDP        json.RawMessage `json:"sdp,omitempty"`
+	Code       string          `json:"code,omitempty"`
+	Name       string          `json:"name,omitempty"`
+	ExpiresIn  int             `json:"expiresInSec,omitempty"`
+	ICEServers []ICEServer     `json:"iceServers,omitempty"`
+	Error      string          `json:"error,omitempty"`
 }
 
 // ICEServer 是发给浏览器的 ICE 配置，形状对齐浏览器 RTCPeerConnection 的字段名。

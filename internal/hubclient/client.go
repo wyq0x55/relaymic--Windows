@@ -49,8 +49,9 @@ type Config struct {
 type Handlers struct {
 	// OnCode 在 Hub 发来新配对码时调用。
 	OnCode func(code string, expiresIn time.Duration)
-	// OnJoined 在发送端接入时调用。
-	OnJoined func(session string)
+	// OnJoined 在发送端接入时调用。iceservers 是这条会话独有的 STUN/TURN
+	// 配置；短期 TURN 凭据只会通过这里下发。
+	OnJoined func(session string, iceServers []signaling.ICEServer)
 	// OnLeft 在发送端离开时调用。
 	OnLeft func(session string)
 	// OnOffer 收到 offer 后返回 answer。SDP 原样进出，本层不做改写。
@@ -179,7 +180,7 @@ func (c *Client) session(ctx context.Context, h Handlers) error {
 			}
 		case signaling.TypeJoined:
 			if h.OnJoined != nil {
-				h.OnJoined(msg.Session)
+				h.OnJoined(msg.Session, msg.ICEServers)
 			}
 		case signaling.TypeLeft:
 			if h.OnLeft != nil {

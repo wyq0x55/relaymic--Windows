@@ -32,6 +32,7 @@ import (
 	"github.com/hueshu/relaymic/internal/hubclient"
 	"github.com/hueshu/relaymic/internal/receiverconfig"
 	"github.com/hueshu/relaymic/internal/rtc"
+	"github.com/hueshu/relaymic/internal/signaling"
 	"github.com/hueshu/relaymic/internal/web"
 	"github.com/pion/webrtc/v4"
 )
@@ -405,7 +406,11 @@ func main() {
 				log.Printf("配对码: %s（%d 分钟内有效，用过即换）", code, int(expiresIn.Minutes()))
 				st.setState("等待发送端")
 			},
-			OnJoined: func(session string) {
+			OnJoined: func(session string, sessionICE []signaling.ICEServer) {
+				if len(sessionICE) > 0 {
+					receiver.SetICEServers(hubICEServers(sessionICE))
+					log.Printf("已应用控制面 ICE 配置（%d 项）", len(sessionICE))
+				}
 				log.Println("发送端已接入")
 			},
 			OnLeft: func(session string) {
@@ -668,6 +673,21 @@ func iceServers(stun, turn, user, pass string) []webrtc.ICEServer {
 			URLs:       []string{turn},
 			Username:   user,
 			Credential: pass,
+		})
+	}
+	return out
+}
+
+func hubICEServers(servers []signaling.ICEServer) []webrtc.ICEServer {
+	out := make([]webrtc.ICEServer, 0, len(servers))
+	for _, server := range servers {
+		if len(server.URLs) == 0 {
+			continue
+		}
+		out = append(out, webrtc.ICEServer{
+			URLs:       append([]string(nil), server.URLs...),
+			Username:   server.Username,
+			Credential: server.Credential,
 		})
 	}
 	return out

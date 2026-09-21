@@ -76,8 +76,8 @@ anywhere, type that code, allow the microphone.
   both ends dial out to one HTTPS/WSS 443 entry point that you deploy yourself
   ([`docs/signaling.md`](docs/signaling.md)), so NAT, a corporate firewall or carrier-grade NAT
   no longer matter, and no VPN is involved. Audio never passes through it — the two ends connect
-  directly. **TURN relay for hostile NATs is not built yet** (#3): two symmetric NATs will
-  currently fail to connect, and the page says so
+  directly. For hostile NATs, configure coturn REST API authentication in the Hub; it issues
+  the paired browser and Receiver the same short-lived TURN credentials
 - The input device on the Mac shows up as `BlackHole 2ch`, not "RelayMic"
 
 But **the audio path itself has been in daily use** — three Macs, every day. The parameters below

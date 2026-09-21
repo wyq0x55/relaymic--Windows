@@ -62,7 +62,8 @@ RelayMic 原来的模型是"发送端必须能直接访问接收端的 `:7420`"�
 SDP 是 `json.RawMessage`：控制面不解析、不改写、不缓存，因此不需要跟着 WebRTC
 版本升级改代码。单条消息上限 64 KiB，超出直接断开。
 
-`GET /api/ice` 用 HTTPS 下发 ICE 配置给浏览器（`#3` 接上 TURN 后填在这里）。
+`GET /api/ice` 只用 HTTPS 下发公开 STUN 配置。成功配对后，Hub 才会通过双方已建立的
+WebSocket 为同一个 session 下发短期 TURN 凭据；公开端点永远不返回 TURN 密码。
 
 ## 安全模型
 
@@ -76,6 +77,7 @@ SDP 是 `json.RawMessage`：控制面不解析、不改写、不缓存，因此�
 | 失败响应 | 未知码、过期码、已用码、被限流返回**同一句话**，不给枚举预言机 |
 | 浏览器来源 | 校验 `Origin`，默认只允许同源，可用 `allowedOrigins` 收窄 |
 | 转发面 | 只允许 sender→offer、receiver→answer；其余消息类型一律断连 |
+| TURN | Hub 从受限文件读取 coturn REST API 共享密钥；按 session 签发 10 分钟 HMAC 凭据，且只在配对后下发给双方 |
 | 日志 | 不记录 token、配对码、原始 SDP、ICE 候选或对端 IP |
 
 接收端重连时旧连接会被立即顶掉（`CloseNow`），避免两个会话同时挂同一台机器；
@@ -101,12 +103,18 @@ relaymic-signaling -gen-receiver 公司电脑
   "keyFile": "/etc/letsencrypt/live/mic.example.com/privkey.pem",
   "allowedOrigins": ["mic.example.com"],
   "iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}],
+  "turn": {
+    "urls": ["turn:turn.example.com:3478?transport=udp"],
+    "authSecretFile": "/etc/relaymic/turn-auth-secret",
+    "credentialTTLSeconds": 600
+  },
   "receivers": [{"name": "公司电脑", "token": "<32 字节 raw url-safe base64>"}]
 }
 ```
 
 配置里拼错的键会直接启动失败（`DisallowUnknownFields`）：把 `receivers` 写成
-`receiver` 却静默忽略，等于上线后才发现一台机器都连不上。
+`receiver` 却静默忽略，等于上线后才发现一台机器都连不上。`iceServers` 只接受
+无凭据的 STUN；把静态 TURN 地址或密码放进去会被拒绝，避免 `/api/ice` 泄露中继权限。
 
 ### 3. 启动
 
@@ -148,6 +156,9 @@ WantedBy=multi-user.target
 | `-monitor` | 本机诊断页监听地址，例如 `127.0.0.1:7420`；**留空表示不监听任何端口** |
 | `-device` | 虚拟音频设备；Windows 默认 `CABLE Input` |
 
+当 Hub 配了 `turn` 时，Receiver 会在成功配对后自动应用短期会话 ICE 配置；不需要也
+不应把 `-turn-user` / `-turn-pass` 写入命令行。`-force-relay` 只用于验证 coturn 路径。
+
 接收端没有任何入站监听。要本机看波形就显式开 `-monitor`，并自己决定绑哪个地址。
 
 ## 本机自测
@@ -160,13 +171,12 @@ relaymic-receiver -hub ws://127.0.0.1:8099/ws/receiver -token-file token.txt -de
 `-plain` 只用于本机：浏览器只在安全上下文里给麦克风权限，所以真正的发送端页面必须走
 HTTPS。`-self-signed-dir <目录>` 可以在没有证书的情况下用自签证书把 TLS 链路跑通。
 
-## 这一版不做的事
+## 当前边界
 
-- **TURN 还没有接**（#3）。双方都在对称型 NAT 后面时，ICE 打不通，页面会明确报
-  "媒体连接失败：双方都在 NAT 后时需要 TURN（#3）"。
-- **接收端目前用自己的 `-stun`/`-turn` 参数**，浏览器用 `/api/ice` 下发的配置。
-  STUN 阶段两者独立无所谓；接 TURN 时两边必须用同一份短期凭据，那是 #3 要在
-  Hub 上做的事：由 Hub 签发凭据并同时下发给两端。
+- coturn 必须启用 REST API 认证（`use-auth-secret` / `static-auth-secret`），并与
+  `turn.authSecretFile` 使用同一个共享密钥。Hub 不代管或安装 coturn。
+- 部署后要用 `-force-relay` 跑一轮真实双端通话；只有这个验证通过，才能声明对称 NAT
+  支持已完成。
 - **配对码用过即换**：会话结束（发送端断开、接收端重连）后必须重新输码。这是
   一次性配对码的直接后果，也是它安全的原因。
 - **`cmd/sender`、`cmd/sender-gui`、`cmd/selfcheck` 仍说旧的局域网协议**，

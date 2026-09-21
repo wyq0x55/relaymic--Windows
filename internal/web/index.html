@@ -148,8 +148,8 @@
 <script>
 const $ = id => document.getElementById(id);
 
-// 控制面把 ICE 配置放在 /api/ice 上。TURN 在 #3 接进来之后会从这里一起下发，
-// 页面不需要知道候选是怎么来的。
+// /api/ice 只放公开 STUN。成功配对后，Hub 才会在 paired 消息里下发这条
+// 会话专属的 TURN 凭据，页面不需要知道 coturn 的共享密钥。
 let iceServers = [{ urls: 'stun:stun.miwifi.com:3478' }];
 
 let ws = null, pc = null, session = null, peerName = '';
@@ -234,6 +234,7 @@ function handle(msg) {
     case 'paired':
       session = msg.session;
       peerName = msg.name || '接收端';
+      if (Array.isArray(msg.iceServers) && msg.iceServers.length) iceServers = msg.iceServers;
       paired = true;
       $('peer').textContent = peerName;
       $('pair').disabled = false;

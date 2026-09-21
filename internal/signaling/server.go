@@ -28,6 +28,8 @@ type ServerConfig struct {
 	Registry *Registry
 	// ICEServers 通过 HTTPS 发给浏览器；#3 接上 TURN 后填在这里。
 	ICEServers []ICEServer
+	// TurnIssuer 为成功配对的双方签发同一组短期 coturn REST API 凭据。
+	TurnIssuer *TurnIssuer
 	// Page 是发送端页面。为空则根路径返回 404。
 	Page []byte
 	// AllowedOrigins 是允许发起 WebSocket 的 Origin host 白名单。
@@ -48,6 +50,7 @@ type ServerConfig struct {
 type Server struct {
 	registry    *Registry
 	ice         []ICEServer
+	turnIssuer  *TurnIssuer
 	page        []byte
 	origins     []string
 	maxAttempts int
@@ -93,6 +96,7 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 	s := &Server{
 		registry:    cfg.Registry,
 		ice:         cfg.ICEServers,
+		turnIssuer:  cfg.TurnIssuer,
 		page:        cfg.Page,
 		origins:     cfg.AllowedOrigins,
 		maxAttempts: cfg.MaxPairingAttemptsPerConn,
@@ -111,6 +115,14 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		s.logger = log.Default()
 	}
 	return s, nil
+}
+
+func (s *Server) sessionICEServers(sessionID string) []ICEServer {
+	servers := append([]ICEServer(nil), s.ice...)
+	if s.turnIssuer != nil {
+		servers = append(servers, s.turnIssuer.ICEServers(sessionID)...)
+	}
+	return servers
 }
 
 // Handler 返回控制面的 HTTP 路由。
@@ -262,12 +274,13 @@ func (s *Server) runSender(ctx context.Context, conn *websocket.Conn, r *http.Re
 	sess := &session{id: sessionID, receiver: rc, sender: sc}
 	s.sessions[sessionID] = sess
 	s.mu.Unlock()
+	iceServers := s.sessionICEServers(sessionID)
 
-	if err := sc.write(ctx, Message{Type: TypePaired, Session: sessionID, Name: receiver.Name()}); err != nil {
+	if err := sc.write(ctx, Message{Type: TypePaired, Session: sessionID, Name: receiver.Name(), ICEServers: iceServers}); err != nil {
 		s.endSession(sess)
 		return
 	}
-	_ = rc.write(ctx, Message{Type: TypeJoined, Session: sessionID})
+	_ = rc.write(ctx, Message{Type: TypeJoined, Session: sessionID, ICEServers: iceServers})
 
 	defer s.endSession(sess)
 	for {

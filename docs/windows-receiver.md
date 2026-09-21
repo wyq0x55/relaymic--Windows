@@ -43,6 +43,9 @@ go run -tags nolibopusfile ./cmd/probe -device "CABLE Input" -tone 3s
 
 RelayMic never falls back to the Windows default speakers when the configured virtual cable cannot be found. Device selection must succeed before the receiver starts; an empty or ambiguous selector also exits and lists the matching endpoints. This prevents remote microphone audio from leaking through physical speakers.
 
-## Current milestone boundary
+## Two-way audio and public networks
 
-This milestone is microphone-only. Teams speaker audio is not routed back through RelayMic. Public signaling and TURN are tracked separately in #2 and #3.
+Use a second virtual cable for Teams speaker return: Teams plays to `VoiceMeeter Aux Input`,
+and start the Receiver with `-return-device "VoiceMeeter Aux Output"`. Public Signaling and
+short-lived coturn credentials are documented in `docs/signaling.md`; use `-force-relay` only
+when validating the relay path.
