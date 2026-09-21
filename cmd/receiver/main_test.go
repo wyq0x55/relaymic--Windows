@@ -1,6 +1,8 @@
 package main
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
@@ -149,5 +151,38 @@ func TestTunnelICEServersRewritesTURNToLocalShim(t *testing.T) {
 	}
 	if got[1].Username != "1700000600:s" || got[1].Credential != "short-lived" {
 		t.Fatalf("credentials lost in rewrite: %+v", got[1])
+	}
+}
+
+func TestLocalWriteAllowedRejectsAnythingButTheLocalConsole(t *testing.T) {
+	cases := []struct {
+		name   string
+		remote string
+		header bool
+		origin string
+		want   bool
+	}{
+		{name: "回环 + 自定义头", remote: "127.0.0.1:5000", header: true, want: true},
+		{name: "IPv6 回环", remote: "[::1]:5000", header: true, want: true},
+		{name: "同源页面", remote: "127.0.0.1:5000", header: true, origin: "http://127.0.0.1:7420", want: true},
+		{name: "缺自定义头（表单能发出来）", remote: "127.0.0.1:5000", want: false},
+		{name: "局域网来源", remote: "10.0.0.5:5000", header: true, want: false},
+		{name: "外部 Origin", remote: "127.0.0.1:5000", header: true, origin: "http://evil.example", want: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:7420/api/session/close", nil)
+			r.RemoteAddr = tc.remote
+			if tc.header {
+				r.Header.Set("X-RelayMic", "1")
+			}
+			if tc.origin != "" {
+				r.Header.Set("Origin", tc.origin)
+			}
+			if got := localWriteAllowed(r); got != tc.want {
+				t.Fatalf("localWriteAllowed() = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }

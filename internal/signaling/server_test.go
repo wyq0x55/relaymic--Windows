@@ -593,3 +593,64 @@ func TestConcurrentSessionsStayIsolated(t *testing.T) {
 	senderB.send(Message{Type: TypeOffer, SDP: offerB3})
 	expectSDP(t, recvB.recv(), TypeOffer, offerB3)
 }
+
+func TestReceiverCanCloseItsOwnSession(t *testing.T) {
+	hub := newTestHub(t)
+	receiver, _, err := hub.dialReceiver(t, hub.token)
+	if err != nil {
+		t.Fatalf("dialReceiver() error = %v", err)
+	}
+	sender, paired, _ := hub.pairWith(t, receiver)
+
+	receiver.send(Message{Type: TypeClose, Session: paired.Session})
+
+	if got := sender.recv(); got.Type != TypeClosed || got.Session != paired.Session || got.Error != SessionClosedText {
+		t.Fatalf("发送端收到 %+v，want 带 session 的 %q（error=%q）", got, TypeClosed, SessionClosedText)
+	}
+	if got := receiver.recv(); got.Type != TypeLeft {
+		t.Fatalf("接收端收到 %+v，want %q", got, TypeLeft)
+	}
+	waiting := receiver.recv()
+	if waiting.Type != TypeWaiting || len(waiting.Code) != PairingCodeDigits {
+		t.Fatalf("接收端新码 = %+v", waiting)
+	}
+
+	// 新码必须立刻可用，旧会话不能留下任何残影。
+	sender2, _, err := hub.dialSender(t, hub.origin())
+	if err != nil {
+		t.Fatalf("dialSender() error = %v", err)
+	}
+	sender2.send(Message{Type: TypePair, Code: waiting.Code})
+	if got := sender2.recv(); got.Type != TypePaired {
+		t.Fatalf("新码配对 = %+v（%s）", got, got.Error)
+	}
+	if got := receiver.recv(); got.Type != TypeJoined {
+		t.Fatalf("接收端 joined = %+v", got)
+	}
+	offer := json.RawMessage(`{"type":"offer","sdp":"v=0 after close"}`)
+	sender2.send(Message{Type: TypeOffer, SDP: offer})
+	expectSDP(t, receiver.recv(), TypeOffer, offer)
+}
+
+func TestCloseFromAnotherReceiverIsIgnored(t *testing.T) {
+	hub, tokens := newMultiTestHub(t, "A-PC", "B-PC")
+
+	recvA, _, err := hub.dialReceiver(t, tokens[0])
+	if err != nil {
+		t.Fatalf("dialReceiver(A) error = %v", err)
+	}
+	senderA, pairedA, _ := hub.pairWith(t, recvA)
+
+	recvB, _, err := hub.dialReceiver(t, tokens[1])
+	if err != nil {
+		t.Fatalf("dialReceiver(B) error = %v", err)
+	}
+	hub.pairWith(t, recvB)
+
+	// B 想关掉 A 的会话：必须无效，A 的通话原样继续。
+	recvB.send(Message{Type: TypeClose, Session: pairedA.Session})
+
+	offer := json.RawMessage(`{"type":"offer","sdp":"v=0 A still alive"}`)
+	senderA.send(Message{Type: TypeOffer, SDP: offer})
+	expectSDP(t, recvA.recv(), TypeOffer, offer)
+}

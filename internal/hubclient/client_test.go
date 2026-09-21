@@ -24,6 +24,7 @@ type fakeHub struct {
 	connects   int
 	codes      []string
 	answers    []json.RawMessage
+	closes     []string
 	sessions   []string
 	dropAfter  int // 第几次连接发完码就把连接掐掉，0 表示不掐
 	iceServers []signaling.ICEServer
@@ -96,12 +97,16 @@ func (h *fakeHub) handle(w http.ResponseWriter, r *http.Request) {
 		if err := read(ctx, conn, &msg); err != nil {
 			return
 		}
-		if msg.Type != "answer" {
-			continue
+		switch msg.Type {
+		case "answer":
+			h.mu.Lock()
+			h.answers = append(h.answers, msg.SDP)
+			h.mu.Unlock()
+		case "close":
+			h.mu.Lock()
+			h.closes = append(h.closes, msg.Session)
+			h.mu.Unlock()
 		}
-		h.mu.Lock()
-		h.answers = append(h.answers, msg.SDP)
-		h.mu.Unlock()
 	}
 }
 
@@ -296,5 +301,53 @@ func waitString(t *testing.T, ch <-chan string) string {
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for a callback")
 		return ""
+	}
+}
+
+func TestCloseSessionTellsTheHubToEndTheSession(t *testing.T) {
+	token := "test-token"
+	hub := newFakeHub(t, token)
+	client := newTestClient(t, hub, token)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	joined := make(chan string, 1)
+	go func() {
+		_ = client.Run(ctx, Handlers{
+			OnJoined: func(session string, _ []signaling.ICEServer) { joined <- session },
+		})
+	}()
+
+	session := <-joined
+	if err := client.CloseSession(ctx, session); err != nil {
+		t.Fatalf("CloseSession() error = %v", err)
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		hub.mu.Lock()
+		got := append([]string(nil), hub.closes...)
+		hub.mu.Unlock()
+		if len(got) > 0 {
+			if len(got) != 1 || got[0] != session {
+				t.Fatalf("控制面收到的 close = %v，want [%s]", got, session)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("控制面没有收到 close 消息")
+}
+
+func TestCloseSessionRejectsEmptySessionOrOfflineClient(t *testing.T) {
+	client, err := New(Config{URL: "ws://127.0.0.1:1/ws/receiver", Token: "tok"})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if err := client.CloseSession(context.Background(), ""); err == nil {
+		t.Fatal("CloseSession() 接受了空 session")
+	}
+	if err := client.CloseSession(context.Background(), "sess-1"); err == nil {
+		t.Fatal("CloseSession() 在没有连接时成功了")
 	}
 }
