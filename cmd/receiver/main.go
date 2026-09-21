@@ -17,6 +17,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"math"
 	"net/http"
@@ -43,7 +44,7 @@ import (
 )
 
 func main() {
-	opts := parseFlags()
+	opts, cfgErr := parseFlags()
 
 	log.SetFlags(log.Ltime)
 
@@ -62,7 +63,10 @@ func main() {
 	// 控制台先起：它只读状态、不发音频，运行实例起不来时它照样要能开。
 	defer closeMonitor(c.serve())
 
-	if actx, err := audio.NewContext(); err != nil {
+	if cfgErr != nil {
+		// 配置文件读坏了也要把页面开出来，人才有地方把它改回去。
+		c.fail(cfgErr)
+	} else if actx, err := audio.NewContext(); err != nil {
 		c.fail(fmt.Errorf("音频初始化失败: %w", err))
 	} else {
 		defer actx.Close()
@@ -78,8 +82,10 @@ func main() {
 	c.stopRuntime()
 }
 
-// options 是这次运行的命令行配置。
+// options 是这次运行的完整配置：命令行 + 配置文件合起来的结果。
 type options struct {
+	configPath string
+
 	hub            string
 	token          string
 	tokenFile      string
@@ -101,7 +107,42 @@ type options struct {
 	record         string
 }
 
-func parseFlags() options {
+// config 收出可以落盘的那部分。
+//
+// 只含用户能改的字段：token 是长期凭据，单独一个文件；STUN/TURN 由 Hub
+// 在配对后按会话下发；-meter / -record / -monitor 是这次运行的诊断手段，
+// 不该被一次页面上的保存固化下来。
+func (o options) config() receiverconfig.Config {
+	return receiverconfig.Config{
+		Hub:            o.hub,
+		Device:         o.device,
+		ReturnDevice:   o.returnDevice,
+		ReturnLoopback: o.returnLoopback,
+		BufferMS:       o.bufferMS,
+		Gain:           o.gain,
+		NoCGNAT:        o.noCGNAT,
+		ForceRelay:     o.forceRelay,
+		TurnTunnel:     o.turnTunnel,
+		DTX:            o.dtx,
+	}
+}
+
+// withConfig 把一份配置盖到选项上，用于页面保存后立刻生效。
+func (o options) withConfig(cfg receiverconfig.Config) options {
+	o.hub = cfg.Hub
+	o.device = cfg.Device
+	o.returnDevice = cfg.ReturnDevice
+	o.returnLoopback = cfg.ReturnLoopback
+	o.bufferMS = cfg.BufferMS
+	o.gain = cfg.Gain
+	o.noCGNAT = cfg.NoCGNAT
+	o.forceRelay = cfg.ForceRelay
+	o.turnTunnel = cfg.TurnTunnel
+	o.dtx = cfg.DTX
+	return o
+}
+
+func parseFlags() (options, error) {
 	hub := flag.String("hub", "", "公网控制面地址，形如 wss://mic.example.com/ws/receiver")
 	token := flag.String("token", "", "接收端凭据；也可以用 -token-file")
 	tokenFile := flag.String("token-file", "", "从文件读接收端凭据（取首行）")
@@ -128,9 +169,53 @@ func parseFlags() options {
 	// 语音识别场景带宽根本不是瓶颈，没有理由为省包冒断字的险。
 	dtx := flag.Bool("dtx", false, "让发送端静音时停发包（省带宽，但可能掐掉轻声）")
 	record := flag.String("record", "", "把解码后、处理前的原始 PCM 录成 WAV，用于杂音诊断")
+	configPath := flag.String("config", receiverconfig.DefaultPath(), "配置文件路径；显式给出的命令行参数优先于文件里的值")
 	flag.Parse()
 
+	// 配置文件是"平时怎么跑"，命令行是"这次怎么跑"，后者覆盖前者。
+	// 只覆盖显式给出的那些：不然命令行里一个没提的默认值会把文件里的
+	// 设置悄悄抹掉。
+	set := map[string]bool{}
+	flag.Visit(func(f *flag.Flag) { set[f.Name] = true })
+
+	cfg, cfgErr := receiverconfig.Load(*configPath, runtime.GOOS)
+	if cfgErr != nil {
+		// 读不出来也继续：控制台得先能起来，人才有地方把文件改回去。
+		cfg = receiverconfig.Default(runtime.GOOS)
+	}
+	if !set["hub"] {
+		*hub = cfg.Hub
+	}
+	if !set["device"] {
+		*deviceName = cfg.Device
+	}
+	if !set["return-device"] {
+		*returnDevice = cfg.ReturnDevice
+	}
+	if !set["return-loopback"] {
+		*returnLoopback = cfg.ReturnLoopback
+	}
+	if !set["buffer"] {
+		*bufferMS = cfg.BufferMS
+	}
+	if !set["gain"] {
+		*gain = cfg.Gain
+	}
+	if !set["no-cgnat"] {
+		*noCGNAT = cfg.NoCGNAT
+	}
+	if !set["force-relay"] {
+		*forceRelay = cfg.ForceRelay
+	}
+	if !set["turn-tunnel"] {
+		*turnTunnel = cfg.TurnTunnel
+	}
+	if !set["dtx"] {
+		*dtx = cfg.DTX
+	}
+
 	return options{
+		configPath:     *configPath,
 		hub:            *hub,
 		token:          *token,
 		tokenFile:      *tokenFile,
@@ -150,7 +235,7 @@ func parseFlags() options {
 		turnTunnel:     *turnTunnel,
 		dtx:            *dtx,
 		record:         *record,
-	}
+	}, cfgErr
 }
 
 // console 是本机的常驻控制台。它比运行实例活得久。
@@ -161,8 +246,25 @@ type console struct {
 	pairing  *monitor.PairingState
 	sessions *monitor.SessionState
 
+	// mu 护着 opts 和 rt：页面在读它们，保存设置和重启在写它们。
 	mu sync.Mutex
 	rt *instance
+
+	// restartMu 把重启串起来。两次并发重启会同时去抢音频设备，
+	// 第二个必然打不开 —— 那不是故障，是自己踩自己。
+	restartMu sync.Mutex
+}
+
+func (c *console) options() options {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.opts
+}
+
+func (c *console) setOptions(opts options) {
+	c.mu.Lock()
+	c.opts = opts
+	c.mu.Unlock()
 }
 
 func (c *console) current() *instance {
@@ -175,6 +277,20 @@ func (c *console) publish(rt *instance) {
 	c.mu.Lock()
 	c.rt = rt
 	c.mu.Unlock()
+}
+
+// restart 换一个运行实例：先停掉旧的，再按当前设置起新的。
+func (c *console) restart() {
+	c.restartMu.Lock()
+	defer c.restartMu.Unlock()
+
+	c.st.setState("重启中")
+	c.st.setError("")
+	c.stopRuntime()
+	c.publish(nil)
+	if err := c.startRuntime(); err != nil {
+		c.fail(err)
+	}
 }
 
 // fail 把启动失败留在控制台上，而不是让进程消失。
@@ -208,12 +324,13 @@ func (c *console) stopRuntime() {
 // serve 起本机诊断页。默认不监听任何端口，要开就自己指定绑到哪。
 // 它只给运维看波形和统计，从不参与信令，因此也不影响"接收端只出站"。
 func (c *console) serve() *http.Server {
-	if c.opts.monitorAddr == "" {
+	addr := c.options().monitorAddr
+	if addr == "" {
 		return nil
 	}
-	srv := &http.Server{Addr: c.opts.monitorAddr, Handler: c.routes()}
+	srv := &http.Server{Addr: addr, Handler: c.routes()}
 	go func() {
-		log.Printf("本机诊断页: http://%s/monitor", c.opts.monitorAddr)
+		log.Printf("本机诊断页: http://%s/monitor", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Println("诊断页已停止:", err)
 		}
@@ -237,6 +354,7 @@ func (c *console) routes() *http.ServeMux {
 	// 本机写操作：只允许回环 + 自定义头。只绑回环挡不住 CSRF ——
 	// 浏览器里任何一个页面都能往 127.0.0.1 发 POST。
 	mux.HandleFunc("POST /api/session/close", c.closeSession)
+	mux.HandleFunc("POST /api/config", c.saveConfig)
 	return mux
 }
 
@@ -245,6 +363,7 @@ func (c *console) routes() *http.ServeMux {
 // 缓冲和 RTP 计数现场取：它们本来就带锁，再抄一份到状态里只会多一处会过期的
 // 真相。运行实例还没起来时，这里只报配置和故障原因。
 func (c *console) status(w http.ResponseWriter, r *http.Request) {
+	opts := c.options()
 	view := c.st.snapshot()
 	pairingView := c.pairing.Snapshot(time.Now(), monitor.IsLoopbackRemoteAddr(r.RemoteAddr))
 
@@ -255,18 +374,32 @@ func (c *console) status(w http.ResponseWriter, r *http.Request) {
 		"levelDb":       view.levelDB,
 		"returnLevelDb": view.returnDB,
 		"gain":          view.gain,
-		"hub":           c.opts.hub,
-		"outputDevice":  c.opts.device,
+		"hub":           opts.hub,
+		"outputDevice":  opts.device,
 		"returnSource":  "",
 		"returnMode":    "未配置",
-		"forceRelay":    c.opts.forceRelay,
-		"turnTunnel":    c.opts.turnTunnel,
+		"forceRelay":    opts.forceRelay,
+		"turnTunnel":    opts.turnTunnel,
 		"bufferedMs":    0,
 		"dropped":       0,
 		"starved":       0,
 		"received":      0,
 		"lost":          0,
 		"sessionActive": c.sessions.Get() != "",
+		"configPath":    opts.configPath,
+		// 设置页要回填的那一份：和落盘的字段一一对应，页面不用自己拼。
+		"config": map[string]any{
+			"hub":            opts.hub,
+			"device":         opts.device,
+			"returnDevice":   opts.returnDevice,
+			"returnLoopback": opts.returnLoopback,
+			"bufferMs":       opts.bufferMS,
+			"gain":           opts.gain,
+			"noCgnat":        opts.noCGNAT,
+			"forceRelay":     opts.forceRelay,
+			"turnTunnel":     opts.turnTunnel,
+			"dtx":            opts.dtx,
+		},
 		"pairing": map[string]any{
 			"active":       pairingView.Active,
 			"code":         pairingView.Code,
@@ -315,6 +448,41 @@ func (c *console) closeSession(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Println("本机控制台结束了当前通话")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// maxConfigBytes 是设置页请求体的上限。它只是一份设置，没有理由更大。
+const maxConfigBytes = 64 << 10
+
+// saveConfig 保存设置并换一个运行实例。
+//
+// 校验和落盘是同步的，因为失败必须当场告诉用户；换实例放在后台，因为重开
+// 音频设备可能要等上几十秒，不能把 HTTP 请求挂在那里。页面轮询 /api/status
+// 就能看到新实例起没起来、没起来是为什么。
+func (c *console) saveConfig(w http.ResponseWriter, r *http.Request) {
+	if !localWriteAllowed(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	opts := c.options()
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxConfigBytes))
+	if err != nil {
+		http.Error(w, "读取请求体失败: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	// 以当前设置打底：页面只改一个字段时，别的字段保持原样。
+	cfg, err := receiverconfig.Parse(body, opts.config())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := receiverconfig.Save(opts.configPath, cfg); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	c.setOptions(opts.withConfig(cfg))
+	log.Println("设置已保存:", opts.configPath)
+	go c.restart()
+	w.WriteHeader(http.StatusAccepted)
 }
 
 // waitForSignal 一直阻塞到用户按下 Ctrl+C。

@@ -1,6 +1,7 @@
 package receiverconfig
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -105,5 +106,67 @@ func TestDefaultPathSitsUnderTheUserConfigDir(t *testing.T) {
 	}
 	if filepath.Base(filepath.Dir(path)) != "relaymic" {
 		t.Fatalf("DefaultPath() = %q，应当落在 relaymic 目录下", path)
+	}
+}
+
+func TestParseKeepsFieldsThePageDidNotSend(t *testing.T) {
+	base := Default("windows")
+	base.Hub = "wss://mic.example.com/ws/receiver"
+	base.ReturnDevice = "VoiceMeeter Aux Output"
+	base.ForceRelay = true
+
+	got, err := Parse([]byte(`{"device":"cable input"}`), base)
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if got.Hub != base.Hub || got.ReturnDevice != base.ReturnDevice || !got.ForceRelay {
+		t.Fatalf("只改了一个字段，其余却被改了：\n got %+v\nbase %+v", got, base)
+	}
+}
+
+func TestParseRoundTripsAFullConfig(t *testing.T) {
+	base := Default("windows")
+	base.Hub = "wss://mic.example.com/ws/receiver"
+	base.ReturnLoopback = "Speakers"
+	base.BufferMS = 220
+	base.Gain = 1.5
+	base.NoCGNAT = true
+	base.TurnTunnel = true
+	base.DTX = true
+
+	body, err := json.Marshal(base)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	got, err := Parse(body, Default("windows"))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if got != base {
+		t.Fatalf("往返后配置变了：\n got %+v\nwant %+v", got, base)
+	}
+}
+
+func TestParseRejectsUnknownFields(t *testing.T) {
+	_, err := Parse([]byte(`{"device":"cable input","returnDevcie":"CABLE-A Output"}`), Default("windows"))
+	if err == nil {
+		t.Fatal("Parse() 接受了拼错的键")
+	}
+	if !strings.Contains(err.Error(), "returnDevcie") {
+		t.Fatalf("错误里应当点名拼错的键，得到 %v", err)
+	}
+}
+
+func TestParseRejectsValuesOutOfRange(t *testing.T) {
+	_, err := Parse([]byte(`{"device":"cable input","bufferMs":5}`), Default("windows"))
+	if err == nil {
+		t.Fatal("Parse() 放过了越界的抖动缓冲")
+	}
+}
+
+func TestParseRejectsAConfigWithNoOutputDevice(t *testing.T) {
+	_, err := Parse([]byte(`{"device":"   "}`), Default("windows"))
+	if err == nil {
+		t.Fatal("Parse() 放过了空的输出设备")
 	}
 }

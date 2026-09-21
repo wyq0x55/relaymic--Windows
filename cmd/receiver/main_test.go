@@ -1,12 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/hueshu/relaymic/internal/receiverconfig"
 	"github.com/hueshu/relaymic/internal/signaling"
 )
 
@@ -184,5 +187,57 @@ func TestLocalWriteAllowedRejectsAnythingButTheLocalConsole(t *testing.T) {
 				t.Fatalf("localWriteAllowed() = %v, want %v", got, tc.want)
 			}
 		})
+	}
+}
+
+// 页面上能改的只有能落盘的那几个字段：这次运行的凭据、诊断开关、
+// 监听地址都不该被一次保存带走。
+func TestSavingSettingsTouchesOnlyPersistedFields(t *testing.T) {
+	o := options{
+		configPath:  `C:\relaymic\config.json`,
+		hub:         "wss://old.example/ws/receiver",
+		token:       "secret-token",
+		monitorAddr: "127.0.0.1:7420",
+		device:      "CABLE Input",
+		bufferMS:    150,
+		meter:       true,
+		stun:        "stun:stun.example.com:3478",
+		turn:        "turn:turn.example.com:3478",
+		turnUser:    "user",
+		turnPass:    "pass",
+		record:      "diag.wav",
+	}
+
+	cfg := receiverconfig.Config{
+		Hub:          "wss://new.example/ws/receiver",
+		Device:       "CABLE Input",
+		ReturnDevice: "VoiceMeeter Aux Output",
+		BufferMS:     220,
+		Gain:         1.5,
+		ForceRelay:   true,
+		TurnTunnel:   true,
+	}
+
+	got := o.withConfig(cfg)
+	if got.hub != cfg.Hub || got.returnDevice != cfg.ReturnDevice || got.bufferMS != cfg.BufferMS {
+		t.Fatalf("可落盘的字段没生效：%+v", got)
+	}
+	if got.token != o.token || got.stun != o.stun || got.turn != o.turn || got.turnUser != o.turnUser ||
+		got.turnPass != o.turnPass || got.meter != o.meter || got.record != o.record ||
+		got.monitorAddr != o.monitorAddr || got.configPath != o.configPath {
+		t.Fatalf("保存设置改动了只属于这次运行的字段：%+v", got)
+	}
+}
+
+// 凭据是长期身份，单独一个文件。配置里带上它，等于每次保存都把它抄一份。
+func TestPersistedConfigNeverCarriesTheToken(t *testing.T) {
+	const token = "KRsN5w-xhshGklDDPI7xL26Bdprw-Sb7dY6HVC8RDok"
+	o := options{token: token, device: "CABLE Input", bufferMS: receiverconfig.DefaultBufferMS}
+	body, err := json.Marshal(o.config())
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	if strings.Contains(string(body), token) {
+		t.Fatalf("配置里出现了凭据：%s", body)
 	}
 }

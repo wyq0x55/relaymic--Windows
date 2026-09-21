@@ -95,6 +95,23 @@ func Load(path, goos string) (Config, error) {
 	return cfg, nil
 }
 
+// Parse 解析一份送进来的配置，例如本机控制台设置页提交的那份。
+//
+// 以 base 为底而不是以默认值为底：页面只改了一个字段时，其余字段应该保持
+// 原样，而不是被悄悄打回默认值。拼错的键和 Load 一样直接失败。
+func Parse(data []byte, base Config) (Config, error) {
+	cfg := base
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&cfg); err != nil {
+		return Config{}, fmt.Errorf("解析配置: %w", err)
+	}
+	if err := cfg.Validate(); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
 // Save 原子写入配置：先写临时文件再改名，避免中途失败留下半份配置。
 func Save(path string, cfg Config) error {
 	if err := cfg.Validate(); err != nil {
