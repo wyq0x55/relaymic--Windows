@@ -5,6 +5,10 @@
 //
 // 它不监听任何端口 —— 公网入口只有控制面一个。这台机器在 NAT 或公司防火墙
 // 后面也能用，因为整条控制通路都是它主动连出去的出站 443。
+//
+// 进程分成两半：常驻的本机控制台，和可起可停的运行实例。控制台先起来，
+// 也因此活得比运行实例久 —— 设备没插、Hub 地址写错、凭据过期，这些都得
+// 能在本机页面上看见并改掉，而不是让进程带着一行日志消失。
 package main
 
 import (
@@ -39,6 +43,65 @@ import (
 )
 
 func main() {
+	opts := parseFlags()
+
+	log.SetFlags(log.Ltime)
+
+	// AGPL 说的 "Appropriate Legal Notices"：启动时把版权、无担保、
+	// 以及源码在哪告诉用户一次。命令行程序的惯例做法。
+	log.Println("RelayMic  Copyright (C) 2026 Shu Chunhui")
+	log.Println("本程序不提供任何担保，遵循 AGPL-3.0 发布。")
+	log.Println("源码：https://github.com/hueshu/relaymic")
+
+	c := &console{
+		opts:     opts,
+		st:       &statusState{state: "启动中"},
+		pairing:  monitor.NewPairingState(),
+		sessions: monitor.NewSessionState(),
+	}
+	// 控制台先起：它只读状态、不发音频，运行实例起不来时它照样要能开。
+	defer closeMonitor(c.serve())
+
+	if actx, err := audio.NewContext(); err != nil {
+		c.fail(fmt.Errorf("音频初始化失败: %w", err))
+	} else {
+		defer actx.Close()
+		c.actx = actx
+		if err := c.startRuntime(); err != nil {
+			c.fail(err)
+		}
+	}
+
+	// 启动失败也走这里：进程留住，控制台继续服务，人能进页面看到原因。
+	waitForSignal()
+	log.Println("退出")
+	c.stopRuntime()
+}
+
+// options 是这次运行的命令行配置。
+type options struct {
+	hub            string
+	token          string
+	tokenFile      string
+	monitorAddr    string
+	device         string
+	returnDevice   string
+	returnLoopback string
+	bufferMS       int
+	gain           float64
+	meter          bool
+	noCGNAT        bool
+	stun           string
+	turn           string
+	turnUser       string
+	turnPass       string
+	forceRelay     bool
+	turnTunnel     bool
+	dtx            bool
+	record         string
+}
+
+func parseFlags() options {
 	hub := flag.String("hub", "", "公网控制面地址，形如 wss://mic.example.com/ws/receiver")
 	token := flag.String("token", "", "接收端凭据；也可以用 -token-file")
 	tokenFile := flag.String("token-file", "", "从文件读接收端凭据（取首行）")
@@ -47,7 +110,7 @@ func main() {
 	returnLoopback := flag.String("return-loopback", "", "回传：环回采集这个播放设备（例如 ヘッドホン）；会带上该设备的全部系统声音")
 	deviceName := flag.String("device", receiverconfig.DefaultOutputDeviceForOS(runtime.GOOS), "输出设备名（子串匹配）；Windows 默认匹配 VB-CABLE")
 	// 150ms 是实测值：80ms 扛不住 WiFi 突发，600ms 白垫延迟。
-	bufferMS := flag.Int("buffer", 150, "抖动缓冲目标深度（毫秒）")
+	bufferMS := flag.Int("buffer", receiverconfig.DefaultBufferMS, "抖动缓冲目标深度（毫秒）")
 	gain := flag.Float64("gain", 0, "固定增益倍数；留空或 0 表示用自动增益（AGC）")
 	meter := flag.Bool("meter", false, "每秒打印一次收到的音频电平，用来诊断音量")
 	// 默认不排除：对称型 NAT 下没有 TURN 就打不通，排掉覆盖网等于自断退路。
@@ -67,24 +130,243 @@ func main() {
 	record := flag.String("record", "", "把解码后、处理前的原始 PCM 录成 WAV，用于杂音诊断")
 	flag.Parse()
 
-	log.SetFlags(log.Ltime)
-
-	// AGPL 说的 "Appropriate Legal Notices"：启动时把版权、无担保、
-	// 以及源码在哪告诉用户一次。命令行程序的惯例做法。
-	log.Println("RelayMic  Copyright (C) 2026 Shu Chunhui")
-	log.Println("本程序不提供任何担保，遵循 AGPL-3.0 发布。")
-	log.Println("源码：https://github.com/hueshu/relaymic")
-
-	actx, err := audio.NewContext()
-	if err != nil {
-		log.Fatalln("音频初始化失败:", err)
+	return options{
+		hub:            *hub,
+		token:          *token,
+		tokenFile:      *tokenFile,
+		monitorAddr:    *monitorAddr,
+		device:         *deviceName,
+		returnDevice:   *returnDevice,
+		returnLoopback: *returnLoopback,
+		bufferMS:       *bufferMS,
+		gain:           *gain,
+		meter:          *meter,
+		noCGNAT:        *noCGNAT,
+		stun:           *stun,
+		turn:           *turn,
+		turnUser:       *turnUser,
+		turnPass:       *turnPass,
+		forceRelay:     *forceRelay,
+		turnTunnel:     *turnTunnel,
+		dtx:            *dtx,
+		record:         *record,
 	}
-	defer actx.Close()
+}
 
-	dev, err := actx.FindPlayback(*deviceName)
-	if err != nil {
-		log.Fatalln(err)
+// console 是本机的常驻控制台。它比运行实例活得久。
+type console struct {
+	opts     options
+	actx     *audio.Context
+	st       *statusState
+	pairing  *monitor.PairingState
+	sessions *monitor.SessionState
+
+	mu sync.Mutex
+	rt *instance
+}
+
+func (c *console) current() *instance {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.rt
+}
+
+func (c *console) publish(rt *instance) {
+	c.mu.Lock()
+	c.rt = rt
+	c.mu.Unlock()
+}
+
+// fail 把启动失败留在控制台上，而不是让进程消失。
+func (c *console) fail(err error) {
+	c.st.setState("未启动")
+	c.st.setError(err.Error())
+	log.Println("接收端未启动:", err)
+}
+
+// startRuntime 建一个运行实例并接上控制台。失败时先把它收拾干净再返回错误 ——
+// 半启动的实例比没启动更糟：设备占着、连接挂着，页面却看不到。
+func (c *console) startRuntime() error {
+	if c.actx == nil {
+		return errors.New("音频子系统不可用")
 	}
+	rt := &instance{opts: c.opts, actx: c.actx, st: c.st, pairing: c.pairing, sessions: c.sessions}
+	if err := rt.start(); err != nil {
+		rt.stop()
+		return err
+	}
+	c.publish(rt)
+	return nil
+}
+
+func (c *console) stopRuntime() {
+	if rt := c.current(); rt != nil {
+		rt.stop()
+	}
+}
+
+// serve 起本机诊断页。默认不监听任何端口，要开就自己指定绑到哪。
+// 它只给运维看波形和统计，从不参与信令，因此也不影响"接收端只出站"。
+func (c *console) serve() *http.Server {
+	if c.opts.monitorAddr == "" {
+		return nil
+	}
+	srv := &http.Server{Addr: c.opts.monitorAddr, Handler: c.routes()}
+	go func() {
+		log.Printf("本机诊断页: http://%s/monitor", c.opts.monitorAddr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Println("诊断页已停止:", err)
+		}
+	}()
+	return srv
+}
+
+func closeMonitor(srv *http.Server) {
+	if srv != nil {
+		_ = srv.Close()
+	}
+}
+
+func (c *console) routes() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/monitor", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(web.MonitorHTML)
+	})
+	mux.HandleFunc("/api/status", c.status)
+	// 本机写操作：只允许回环 + 自定义头。只绑回环挡不住 CSRF ——
+	// 浏览器里任何一个页面都能往 127.0.0.1 发 POST。
+	mux.HandleFunc("POST /api/session/close", c.closeSession)
+	return mux
+}
+
+// status 汇总页面要看的全部状态。
+//
+// 缓冲和 RTP 计数现场取：它们本来就带锁，再抄一份到状态里只会多一处会过期的
+// 真相。运行实例还没起来时，这里只报配置和故障原因。
+func (c *console) status(w http.ResponseWriter, r *http.Request) {
+	view := c.st.snapshot()
+	pairingView := c.pairing.Snapshot(time.Now(), monitor.IsLoopbackRemoteAddr(r.RemoteAddr))
+
+	out := map[string]any{
+		"state":         view.state,
+		"error":         view.err,
+		"path":          view.path,
+		"levelDb":       view.levelDB,
+		"returnLevelDb": view.returnDB,
+		"gain":          view.gain,
+		"hub":           c.opts.hub,
+		"outputDevice":  c.opts.device,
+		"returnSource":  "",
+		"returnMode":    "未配置",
+		"forceRelay":    c.opts.forceRelay,
+		"turnTunnel":    c.opts.turnTunnel,
+		"bufferedMs":    0,
+		"dropped":       0,
+		"starved":       0,
+		"received":      0,
+		"lost":          0,
+		"sessionActive": c.sessions.Get() != "",
+		"pairing": map[string]any{
+			"active":       pairingView.Active,
+			"code":         pairingView.Code,
+			"hidden":       pairingView.Hidden,
+			"expiresInSec": int(math.Ceil(pairingView.ExpiresIn.Seconds())),
+		},
+	}
+	if rt := c.current(); rt != nil && rt.player != nil && rt.receiver != nil {
+		buffered, dropped, starved := rt.player.Stats()
+		received, lost, _, _ := rt.receiver.Stats().Snapshot()
+		out["bufferedMs"] = buffered * 1000 / (rtc.SampleRate * rtc.Channels)
+		out["dropped"] = dropped
+		out["starved"] = starved
+		out["received"] = received
+		out["lost"] = lost
+		out["outputDevice"] = rt.dev.Name
+		out["returnSource"] = rt.returnSourceName
+		out["returnMode"] = rt.returnSourceMode
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(out)
+}
+
+// closeSession 结束当前通话：让控制面把这次会话收掉，接收端不用重启。
+func (c *console) closeSession(w http.ResponseWriter, r *http.Request) {
+	if !localWriteAllowed(r) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	session := c.sessions.Get()
+	if session == "" {
+		http.Error(w, "没有进行中的通话", http.StatusConflict)
+		return
+	}
+	rt := c.current()
+	if rt == nil || rt.client == nil {
+		http.Error(w, "接收端未启动", http.StatusConflict)
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if err := rt.client.CloseSession(ctx, session); err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	log.Println("本机控制台结束了当前通话")
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// waitForSignal 一直阻塞到用户按下 Ctrl+C。
+func waitForSignal() {
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	<-stop
+	signal.Stop(stop)
+}
+
+// instance 是一次接收端运行实例：输出设备、WebRTC 接收、控制面连接。
+//
+// 控制台常驻，运行实例可起可停 —— "改设置"的语义是换一个实例，
+// 而不是让进程消失。
+type instance struct {
+	opts     options
+	actx     *audio.Context
+	st       *statusState
+	pairing  *monitor.PairingState
+	sessions *monitor.SessionState
+
+	dev      audio.Device
+	player   *audio.Player
+	receiver *rtc.Receiver
+	client   *hubclient.Client
+	capturer *audio.Capturer
+	shim     *turnshim.Shim
+	rec      *audio.WAVWriter
+
+	level       *levelMeter
+	returnLevel *levelMeter
+	agc         *audio.AGC
+	useAGC      bool
+
+	returnSourceName string
+	returnSourceMode string
+
+	cancel  context.CancelFunc
+	stopped sync.Once
+	wg      sync.WaitGroup
+}
+
+func (r *instance) start() error {
+	ctx, cancel := context.WithCancel(context.Background())
+	r.cancel = cancel
+
+	dev, err := r.actx.FindPlayback(r.opts.device)
+	if err != nil {
+		return err
+	}
+	r.dev = dev
+	r.st.setState("打开输出设备中")
 
 	// 打开设备失败不退出，进程内重试。
 	//
@@ -95,143 +377,136 @@ func main() {
 	//
 	// 每轮先让系统的 say 打开一次设备：macOS 26 上 BlackHole 空置会
 	// 回到"未激活"态，非 Apple 进程首开会挂死；say 能唤醒它。
-	var player *audio.Player
 	for {
 		if runtime.GOOS == "darwin" {
 			_ = exec.Command("/usr/bin/say", "-a", dev.Name, " ").Run()
 		}
 		// 解码出来就是立体声交错的 PCM，和 BlackHole 2ch 的格式一致，直接灌进去。
-		player, err = actx.NewPlayer(dev, rtc.SampleRate, rtc.Channels, *bufferMS)
+		r.player, err = r.actx.NewPlayer(dev, rtc.SampleRate, rtc.Channels, r.opts.bufferMS)
 		if err == nil {
 			break
 		}
 		log.Println(err)
 		log.Println("30 秒后重试打开设备（进程不退出，避免累积驱动残留）")
-		time.Sleep(30 * time.Second)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(30 * time.Second):
+		}
 	}
-	defer player.Close()
 
 	// 增益补在解码之后、写设备之前。发送端的麦克风音量差异很大，
 	// 而下游的语音识别普遍带静音门限 —— 声音送到了但太小，表现和没送到一样。
-	ice := iceServers(*stun, *turn, *turnUser, *turnPass)
-
-	level := newLevelMeter()
-	agc := audio.NewAGC()
-	useAGC := *gain <= 0
-	if useAGC {
+	r.level = newLevelMeter()
+	r.agc = audio.NewAGC()
+	r.useAGC = r.opts.gain <= 0
+	if r.useAGC {
 		log.Println("自动增益已启用")
 	} else {
-		log.Printf("固定增益 %.2gx", *gain)
+		log.Printf("固定增益 %.2gx", r.opts.gain)
 	}
+
 	// 诊断录音挂在链条最前面：录的是解码器吐出的原始样本。
 	// 波形里若已有硬边缘，病在发送端或传输；若这里干净而听感仍炸，
 	// 病在后面的处理和播放。这一刀把整条链切成两半。
-	var rec *audio.WAVWriter
-	if *record != "" {
-		var err error
-		if rec, err = audio.NewWAVWriter(*record, rtc.SampleRate, rtc.Channels); err != nil {
-			log.Fatalln("打开录音文件失败:", err)
+	if r.opts.record != "" {
+		rec, err := audio.NewWAVWriter(r.opts.record, rtc.SampleRate, rtc.Channels)
+		if err != nil {
+			return fmt.Errorf("打开录音文件失败: %w", err)
 		}
-		log.Println("诊断录音:", *record)
+		r.rec = rec
+		log.Println("诊断录音:", r.opts.record)
 	}
 
-	st := &statusState{state: "未连接"}
-	pairing := monitor.NewPairingState()
-	sessions := monitor.NewSessionState()
-
-	receiver := rtc.New(
+	r.receiver = rtc.New(
 		func(pcm []int16) {
-			if rec != nil {
-				rec.Write(pcm)
+			if r.rec != nil {
+				r.rec.Write(pcm)
 			}
-			if useAGC {
-				agc.Process(pcm)
+			if r.useAGC {
+				r.agc.Process(pcm)
 			} else {
-				applyGain(pcm, *gain)
+				applyGain(pcm, r.opts.gain)
 			}
-			level.observe(pcm)
-			player.Write(pcm)
+			r.level.observe(pcm)
+			r.player.Write(pcm)
 		},
 		func(state webrtc.PeerConnectionState) {
 			log.Println("连接状态:", state)
-			st.setState(state.String())
+			r.st.setState(state.String())
 		},
 	)
-	receiver.OnPath(func(path string) {
+	r.receiver.OnPath(func(path string) {
 		log.Println("链路:", path)
-		st.setPath(path)
+		r.st.setPath(path)
 	})
-	receiver.ExcludeCGNAT(*noCGNAT)
-	receiver.SetICEServers(ice)
-	receiver.SetDTX(*dtx)
-	receiver.ForceRelay(*forceRelay)
-	if *forceRelay {
+	r.receiver.ExcludeCGNAT(r.opts.noCGNAT)
+	r.receiver.SetICEServers(iceServers(r.opts.stun, r.opts.turn, r.opts.turnUser, r.opts.turnPass))
+	r.receiver.SetDTX(r.opts.dtx)
+	r.receiver.ForceRelay(r.opts.forceRelay)
+	if r.opts.forceRelay {
 		log.Println("强制中继模式：只接受 TURN 候选")
 	}
-	if *noCGNAT {
+	if r.opts.noCGNAT {
 		log.Println("已排除 CGNAT(100.64/10) 候选：强制公网直连")
-		if *turn == "" {
+		if r.opts.turn == "" {
 			log.Println("警告：没有配 TURN，对称型 NAT 下很可能完全连不上")
 		}
 	}
-	defer receiver.Close()
 
 	// 回传：把公司电脑上的声音送回发送端。
 	//
 	// 两条路语义差得很远，必须显式选一条：采第二条虚拟线只拿到目标应用的声音；
 	// 环回采播放设备会把这台机器上所有系统声音一起送进会议。
-	returnSrc, err := resolveReturnSource(*returnDevice, *returnLoopback)
+	returnSrc, err := resolveReturnSource(r.opts.returnDevice, r.opts.returnLoopback)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
 	if err := returnSrc.checkNotFeedback(dev.Name); err != nil {
-		log.Fatalln(err)
+		return err
 	}
 	// 回传电平：和上行一样单独取，用来回答"对面到底有没有声音进来"。
 	// 没有这个读数，"听不到会议"只能靠猜。
-	var returnLevel *levelMeter
-	returnSourceName, returnSourceMode := "", "未配置"
+	r.returnSourceMode = "未配置"
 	if returnSrc.enabled() {
 		downlink, err := rtc.NewDownlink()
 		if err != nil {
-			log.Fatalln("建立回传链路失败:", err)
+			return fmt.Errorf("建立回传链路失败: %w", err)
 		}
-		receiver.SetDownlink(downlink)
-		returnLevel = newLevelMeter()
+		r.receiver.SetDownlink(downlink)
+		r.returnLevel = newLevelMeter()
 		onReturnPCM := func(pcm []int16) {
-			returnLevel.observe(pcm)
+			r.returnLevel.observe(pcm)
 			downlink.Write(pcm)
 		}
 
 		var captureDev audio.Device
-		var capturer *audio.Capturer
 		if returnSrc.loopback {
-			captureDev, err = actx.FindLoopback(returnSrc.selector)
+			captureDev, err = r.actx.FindLoopback(returnSrc.selector)
 			if err != nil {
-				log.Fatalln(err)
+				return err
 			}
-			capturer, err = actx.NewLoopbackCapturer(captureDev, rtc.SampleRate, rtc.Channels, onReturnPCM)
+			r.capturer, err = r.actx.NewLoopbackCapturer(captureDev, rtc.SampleRate, rtc.Channels, onReturnPCM)
 		} else {
-			captureDev, err = actx.FindCapture(returnSrc.selector)
+			captureDev, err = r.actx.FindCapture(returnSrc.selector)
 			if err != nil {
-				log.Fatalln(err)
+				return err
 			}
-			capturer, err = actx.NewCapturer(captureDev, rtc.SampleRate, rtc.Channels, onReturnPCM)
+			r.capturer, err = r.actx.NewCapturer(captureDev, rtc.SampleRate, rtc.Channels, onReturnPCM)
 		}
 		if err != nil {
-			log.Fatalln("打开回传采集失败:", err)
+			return fmt.Errorf("打开回传采集失败: %w", err)
 		}
-		defer capturer.Close()
 		if returnSrc.loopback {
-			returnSourceMode = "环回"
+			r.returnSourceMode = "环回"
 			log.Printf("回传: 环回采集 %s（含这台机器的全部系统声音）", captureDev.Name)
 		} else {
-			returnSourceMode = "虚拟线"
+			r.returnSourceMode = "虚拟线"
 			log.Printf("回传: 采集 %s", captureDev.Name)
 		}
-		returnSourceName = captureDev.Name
+		r.returnSourceName = captureDev.Name
 	}
-	receiver.OnNotice(func(msg string) { log.Println(msg) })
+	r.receiver.OnNotice(func(msg string) { log.Println(msg) })
 
 	name, _ := os.Hostname()
 	name = strings.TrimSuffix(name, ".local")
@@ -242,57 +517,61 @@ func main() {
 
 	// 接收端不监听任何端口：公网入口只有控制面一个。
 	// 这台机器在 NAT / 公司防火墙后面也能用，因为整条控制通路都是出站 443。
-	if *hub == "" {
-		log.Fatalln("缺少 -hub：接收端必须主动连到公网控制面，不再在本机监听端口")
+	if r.opts.hub == "" {
+		return errors.New("缺少 -hub：接收端必须主动连到公网控制面，不再在本机监听端口")
 	}
-	secret, err := readToken(*token, *tokenFile)
+	secret, err := readToken(r.opts.token, r.opts.tokenFile)
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
-	client, err := hubclient.New(hubclient.Config{URL: *hub, Token: secret})
+	client, err := hubclient.New(hubclient.Config{URL: r.opts.hub, Token: secret})
 	if err != nil {
-		log.Fatalln(err)
+		return err
 	}
-	hubCtx, stopHub := context.WithCancel(context.Background())
+	r.client = client
+
 	// TURN 隧道：只放行 HTTP 代理的网络里，TURN 客户端自己出不去。
 	// 在回环地址上开一个入口，把 TURN/TCP 塞进这条已经能通的 WSS。
 	turnTunnelAddr := ""
-	if *turnTunnel {
-		shim, err := turnshim.Start(hubCtx, "127.0.0.1:0", client.DialTunnel)
+	if r.opts.turnTunnel {
+		shim, err := turnshim.Start(ctx, "127.0.0.1:0", client.DialTunnel)
 		if err != nil {
-			log.Fatalln("启动 TURN 隧道失败:", err)
+			return fmt.Errorf("启动 TURN 隧道失败: %w", err)
 		}
+		r.shim = shim
 		turnTunnelAddr = shim.Addr()
-		log.Printf("TURN 隧道: %s → %s", turnTunnelAddr, *hub)
+		log.Printf("TURN 隧道: %s → %s", turnTunnelAddr, r.opts.hub)
 	}
-	defer stopHub()
+
+	r.wg.Add(1)
 	go func() {
-		err := client.Run(hubCtx, hubclient.Handlers{
+		defer r.wg.Done()
+		err := client.Run(ctx, hubclient.Handlers{
 			OnCode: func(code string, expiresIn time.Duration) {
-				log.Printf("已连接 %s", *hub)
+				log.Printf("已连接 %s", r.opts.hub)
 				log.Printf("设备: %s", dev.Name)
-				pairing.Set(code, time.Now().Add(expiresIn))
-				if *monitorAddr == "" {
+				r.pairing.Set(code, time.Now().Add(expiresIn))
+				if r.opts.monitorAddr == "" {
 					log.Printf("已生成一次性配对码（%d 分钟有效）；用 -monitor 127.0.0.1:7420 在本机查看", int(expiresIn.Minutes()))
 				}
-				st.setState("等待发送端")
+				r.st.setState("等待发送端")
 			},
 			OnJoined: func(session string, sessionICE []signaling.ICEServer) {
-				pairing.Clear()
-				sessions.Set(session)
+				r.pairing.Clear()
+				r.sessions.Set(session)
 				if len(sessionICE) > 0 {
 					servers := sessionICE
 					if turnTunnelAddr != "" {
 						servers = tunnelICEServers(sessionICE, turnTunnelAddr)
 					}
-					receiver.SetICEServers(hubICEServers(servers))
+					r.receiver.SetICEServers(hubICEServers(servers))
 					log.Printf("已应用控制面 ICE 配置（%d 项）", len(sessionICE))
 				}
 				log.Println("发送端已接入")
 			},
 			OnLeft: func(session string) {
-				pairing.Clear()
-				sessions.Clear(session)
+				r.pairing.Clear()
+				r.sessions.Clear(session)
 				log.Println("发送端已离开，控制面已换新配对码")
 			},
 			OnError: func(message string) {
@@ -300,12 +579,12 @@ func main() {
 			},
 			// SDP 只在两端之间走：控制面原样转发，这里也只做编解码转换，
 			// 不重新协商、不改写候选。
-			OnOffer: func(ctx context.Context, session string, offer json.RawMessage) (json.RawMessage, error) {
+			OnOffer: func(offerCtx context.Context, session string, offer json.RawMessage) (json.RawMessage, error) {
 				var sdp webrtc.SessionDescription
 				if err := json.Unmarshal(offer, &sdp); err != nil {
 					return nil, fmt.Errorf("解析 offer: %w", err)
 				}
-				answer, err := receiver.Answer(sdp)
+				answer, err := r.receiver.Answer(sdp)
 				if err != nil {
 					return nil, err
 				}
@@ -313,154 +592,144 @@ func main() {
 			},
 		})
 		if err != nil {
-			log.Fatalln("信令连接失败:", err)
+			// 握手被拒这类错误不会自愈：token 不对、地址不对，重连一万次
+			// 也是同一个结果。留在控制台上让人看见，而不是安静地退避重连。
+			r.st.setState("控制面拒绝连接")
+			r.st.setError(err.Error())
+			log.Println("信令连接失败:", err)
 		}
 	}()
 
-	mux := http.NewServeMux()
-
-	mux.HandleFunc("/monitor", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write(web.MonitorHTML)
-	})
-	// 缓冲和 RTP 计数现场取：它们本来就带锁，再抄一份到状态里只会多一处会过期的真相。
-	mux.HandleFunc("/api/status", func(w http.ResponseWriter, r *http.Request) {
-		buffered, dropped, starved := player.Stats()
-		received, lost, _, _ := receiver.Stats().Snapshot()
-		state, path, levelDB, gain := st.snapshot()
-		pairingView := pairing.Snapshot(time.Now(), monitor.IsLoopbackRemoteAddr(r.RemoteAddr))
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"state":         state,
-			"path":          path,
-			"levelDb":       levelDB,
-			"gain":          gain,
-			"bufferedMs":    buffered * 1000 / (rtc.SampleRate * rtc.Channels),
-			"dropped":       dropped,
-			"starved":       starved,
-			"received":      received,
-			"lost":          lost,
-			"hub":           *hub,
-			"outputDevice":  dev.Name,
-			"returnSource":  returnSourceName,
-			"returnMode":    returnSourceMode,
-			"forceRelay":    *forceRelay,
-			"sessionActive": sessions.Get() != "",
-			"pairing": map[string]any{
-				"active":       pairingView.Active,
-				"code":         pairingView.Code,
-				"hidden":       pairingView.Hidden,
-				"expiresInSec": int(math.Ceil(pairingView.ExpiresIn.Seconds())),
-			},
-		})
-	})
-	// 本机写操作：只允许回环 + 自定义头。只绑回环挡不住 CSRF ——
-	// 浏览器里任何一个页面都能往 127.0.0.1 发 POST。
-	mux.HandleFunc("POST /api/session/close", func(w http.ResponseWriter, r *http.Request) {
-		if !localWriteAllowed(r) {
-			http.Error(w, "forbidden", http.StatusForbidden)
-			return
-		}
-		session := sessions.Get()
-		if session == "" {
-			http.Error(w, "没有进行中的通话", http.StatusConflict)
-			return
-		}
-		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-		defer cancel()
-		if err := client.CloseSession(ctx, session); err != nil {
-			http.Error(w, err.Error(), http.StatusBadGateway)
-			return
-		}
-		log.Println("本机控制台结束了当前通话")
-		w.WriteHeader(http.StatusNoContent)
-	})
-	// 本机诊断页是可选的：默认不监听任何端口，要开就自己指定绑到哪。
-	// 它只给运维看波形和统计，从不参与信令，因此也不影响"接收端只出站"。
-	var monitorSrv *http.Server
-	if *monitorAddr != "" {
-		monitorSrv = &http.Server{Addr: *monitorAddr, Handler: mux}
-		go func() {
-			log.Printf("本机诊断页: http://%s/monitor", *monitorAddr)
-			if err := monitorSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Println("诊断页已停止:", err)
-			}
-		}()
-	}
-
 	// 每 10 秒报一次缓冲健康度，用来判断要不要调 -buffer。
+	r.wg.Add(1)
 	go func() {
+		defer r.wg.Done()
 		lastStarved := 0
-		for range time.Tick(10 * time.Second) {
-			buffered, dropped, starved := player.Stats()
-			recv, lost, reorder, dup := receiver.Stats().Snapshot()
-			if recv > 0 {
-				log.Printf("缓冲=%d(%.0fms) 丢弃=%d 欠载=%d ｜ RTP 收=%d 丢=%d(%.2f%%) 乱序=%d 重复=%d",
-					buffered, float64(buffered)*1000/float64(rtc.SampleRate*rtc.Channels),
-					dropped, starved, recv, lost,
-					float64(lost)*100/float64(recv+lost), reorder, dup)
-				// 欠载又涨了就把见底现场打出来："缓冲够深却见底"这种
-				// 矛盾，靠 10 秒采样永远解释不了，只能靠现场数字。
-				if starved > lastStarved {
-					size, want := player.LastStarve()
-					log.Printf("  最近欠载现场：缓冲剩 %d 样本(%.0fms)，声卡要 %d",
-						size, float64(size)*1000/float64(rtc.SampleRate*rtc.Channels), want)
-				}
-				lastStarved = starved
+		ticker := time.NewTicker(10 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
 			}
+			buffered, dropped, starved := r.player.Stats()
+			recv, lost, reorder, dup := r.receiver.Stats().Snapshot()
+			if recv == 0 {
+				continue
+			}
+			log.Printf("缓冲=%d(%.0fms) 丢弃=%d 欠载=%d ｜ RTP 收=%d 丢=%d(%.2f%%) 乱序=%d 重复=%d",
+				buffered, float64(buffered)*1000/float64(rtc.SampleRate*rtc.Channels),
+				dropped, starved, recv, lost,
+				float64(lost)*100/float64(recv+lost), reorder, dup)
+			// 欠载又涨了就把见底现场打出来："缓冲够深却见底"这种
+			// 矛盾，靠 10 秒采样永远解释不了，只能靠现场数字。
+			if starved > lastStarved {
+				size, want := r.player.LastStarve()
+				log.Printf("  最近欠载现场：缓冲剩 %d 样本(%.0fms)，声卡要 %d",
+					size, float64(size)*1000/float64(rtc.SampleRate*rtc.Channels), want)
+			}
+			lastStarved = starved
 		}
 	}()
 
 	// 电平表只有一个消费者：takeDBFS 会清零，监控页和 -meter 各取一次的话，
 	// 两边都只能看到半截读数。这里统一取，再决定要不要打日志。
+	r.wg.Add(1)
 	go func() {
-		for range time.Tick(time.Second) {
-			g := *gain
-			if useAGC {
-				g = agc.Gain()
+		defer r.wg.Done()
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
 			}
-			db, ok := level.takeDBFS()
+			g := r.opts.gain
+			if r.useAGC {
+				g = r.agc.Gain()
+			}
+			db, ok := r.level.takeDBFS()
 			if !ok {
 				// 这一秒一个样本都没来，等同于静音，否则页面会一直挂着上一次的读数。
-				st.setLevel(-120, g)
-			} else {
-				st.setLevel(db, g)
+				db = -120
 			}
-			if returnLevel != nil {
+			r.st.setLevel(db, g)
+			if r.returnLevel != nil {
 				// 回传的电平每秒都要取走，否则峰值会一直累加到下一次有人看。
-				if rdb, rok := returnLevel.takeDBFS(); rok && *meter {
+				rdb, rok := r.returnLevel.takeDBFS()
+				if !rok {
+					rdb = -120
+				}
+				r.st.setReturnLevel(rdb)
+				if rok && r.opts.meter {
 					log.Printf("回传 %6.1f dBFS %s", rdb, bar(rdb))
 				}
 			}
-			if !*meter || !ok {
+			if !r.opts.meter || !ok {
 				continue
 			}
-			if useAGC {
-				log.Printf("电平 %6.1f dBFS %s  增益 %.1fx", db, bar(db), agc.Gain())
+			if r.useAGC {
+				log.Printf("电平 %6.1f dBFS %s  增益 %.1fx", db, bar(db), r.agc.Gain())
 			} else {
 				log.Printf("电平 %6.1f dBFS %s", db, bar(db))
 			}
 		}
 	}()
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	<-stop
-	log.Println("退出")
-	stopHub()
-	if monitorSrv != nil {
-		_ = monitorSrv.Close()
-	}
+	r.st.setState("连接控制面")
+	return nil
+}
+
+// stop 关掉这个运行实例并释放它占的设备。可重复调用。
+//
+// 先取消上下文、等后台协程收工，最后才关设备 —— 反过来会在设备已经关掉
+// 之后还有协程往里写。
+func (r *instance) stop() {
+	r.stopped.Do(func() {
+		if r.cancel != nil {
+			r.cancel()
+		}
+		r.wg.Wait()
+		if r.shim != nil {
+			_ = r.shim.Close()
+		}
+		if r.capturer != nil {
+			r.capturer.Close()
+		}
+		if r.receiver != nil {
+			r.receiver.Close()
+		}
+		if r.player != nil {
+			r.player.Close()
+		}
+		if r.rec != nil {
+			_ = r.rec.Close()
+		}
+	})
 }
 
 // statusState 是 /api/status 里那几个"只有回调和定时器知道"的值。
 // 写它的是 ICE 回调和电平协程，读它的是 HTTP 处理器，全在不同的协程上。
 type statusState struct {
-	mu      sync.Mutex
-	state   string
-	path    string
-	levelDB float64
-	gain    float64
+	mu       sync.Mutex
+	state    string
+	path     string
+	err      string
+	levelDB  float64
+	returnDB float64
+	gain     float64
+}
+
+// statusView 是一次性快照，避免处理器拿着锁去拼 JSON。
+type statusView struct {
+	state    string
+	path     string
+	err      string
+	levelDB  float64
+	returnDB float64
+	gain     float64
 }
 
 func (s *statusState) setState(state string) {
@@ -475,16 +744,36 @@ func (s *statusState) setPath(path string) {
 	s.path = path
 }
 
+// setError 记下一次不会自愈的故障，让页面能说出"为什么没起来"。
+func (s *statusState) setError(msg string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.err = msg
+}
+
 func (s *statusState) setLevel(db, gain float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.levelDB, s.gain = db, gain
 }
 
-func (s *statusState) snapshot() (state, path string, levelDB, gain float64) {
+func (s *statusState) setReturnLevel(db float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.state, s.path, s.levelDB, s.gain
+	s.returnDB = db
+}
+
+func (s *statusState) snapshot() statusView {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return statusView{
+		state:    s.state,
+		path:     s.path,
+		err:      s.err,
+		levelDB:  s.levelDB,
+		returnDB: s.returnDB,
+		gain:     s.gain,
+	}
 }
 
 // iceServers 组装 STUN/TURN 列表。TURN 只在填了地址时加入。
