@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>接收监控</title>
+<title>RelayMic 接收端</title>
 <style>
   :root {
     --bg: #0f1115;
+    --panel: #151922;
     --fg: #e8eaed;
     --dim: #8a8f98;
     --line: #262a33;
@@ -21,95 +22,194 @@
     background: var(--bg);
     color: var(--fg);
     font: 15px/1.6 -apple-system, "Segoe UI", system-ui, sans-serif;
-    padding: 24px;
+    padding: 24px 20px 40px;
   }
-  main { width: 100%; max-width: 520px; margin: 0 auto; }
-  h1 { font-size: 17px; font-weight: 600; margin: 0 0 20px; }
+  main { width: 100%; max-width: 1000px; margin: 0 auto; }
+
+  .top { display: flex; align-items: center; gap: 12px; margin-bottom: 18px; }
+  h1 { font-size: 17px; font-weight: 600; margin: 0; flex: 1; }
+  .pill {
+    font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--dim); white-space: nowrap;
+  }
+  .pill.ok { color: var(--ok); border-color: #1f4a32; }
+  .pill.warn { color: var(--warn); border-color: #4a3c1f; }
+  .pill.err { color: var(--err); border-color: #4a2622; }
+
+  .banner {
+    border: 1px solid #4a2622; background: #1d1315; color: var(--err);
+    border-radius: 10px; padding: 12px 14px; margin-bottom: 16px;
+    font-size: 13px; overflow-wrap: anywhere;
+  }
+
+  .grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
+  @media (min-width: 780px) { .grid { grid-template-columns: 1fr 1fr; } .span { grid-column: 1 / -1; } }
 
   .card {
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 16px;
-    margin-bottom: 16px;
+    border: 1px solid var(--line); background: var(--panel);
+    border-radius: 10px; padding: 16px;
   }
   .card h2 {
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--dim);
-    margin: 0 0 12px;
+    font-size: 13px; font-weight: 600; color: var(--dim);
+    margin: 0 0 12px; display: flex; align-items: baseline; gap: 8px;
   }
-  .code { font: 700 34px/1.1 ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: .16em; font-variant-numeric: tabular-nums; }
-  .hint { color: var(--dim); font-size: 13px; margin-top: 8px; }
-  button { margin-top: 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 7px; background: #1b202a; color: var(--fg); font: inherit; cursor: pointer; }
+  .card h2 span { font-weight: 400; }
+
+  .code {
+    font: 700 34px/1.1 ui-monospace, SFMono-Regular, Consolas, monospace;
+    letter-spacing: .16em; font-variant-numeric: tabular-nums;
+  }
+  .hint { color: var(--dim); font-size: 13px; }
+  .hint.wrap { overflow-wrap: anywhere; }
+  .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 12px; }
+
+  button {
+    padding: 8px 12px; border: 1px solid var(--line); border-radius: 7px;
+    background: #1b202a; color: var(--fg); font: inherit; cursor: pointer;
+  }
   button:disabled { cursor: default; color: var(--dim); }
+  button.primary { background: #1f3a2a; border-color: #2c5a3f; }
 
-  #state { font-size: 15px; font-weight: 600; }
-  #path { color: var(--dim); font-size: 13px; margin: 4px 0 16px; word-break: break-all; }
+  .mode { font-size: 15px; font-weight: 600; }
+  .mode.ok { color: var(--ok); } .mode.warn { color: var(--warn); } .mode.err { color: var(--err); }
 
-  .meter {
-    height: 4px;
-    margin-bottom: 16px;
-    background: var(--line);
-    border-radius: 2px;
-    overflow: hidden;
-  }
-  .meter i {
-    display: block;
-    height: 100%;
-    width: 0;
-    background: var(--ok);
-    transition: width .2s linear;
-  }
+  .kv { display: grid; grid-template-columns: 84px 1fr; gap: 4px 12px; font-size: 13px; margin: 12px 0 0; }
+  .kv dt { color: var(--dim); }
+  .kv dd { margin: 0; overflow-wrap: anywhere; }
 
-  .stats { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--dim); }
+  .meter-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .meter-label { color: var(--dim); font-size: 13px; width: 34px; flex: none; }
+  .meter { flex: 1; height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .2s linear; }
+  .meter-row b { font-size: 12px; font-variant-numeric: tabular-nums; width: 78px; text-align: right; flex: none; }
+
+  .stats { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--dim); margin-top: 14px; }
   .stats b { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
-  .config { display: grid; grid-template-columns: 96px 1fr; gap: 5px 12px; font-size: 13px; }
-  .config dt { color: var(--dim); }
-  .config dd { margin: 0; overflow-wrap: anywhere; }
 
-  .ok { color: var(--ok); } .warn { color: var(--warn); } .err { color: var(--err); }
+  form { display: grid; gap: 10px; }
+  @media (min-width: 780px) { form .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; } }
+  label { display: grid; gap: 4px; font-size: 13px; color: var(--dim); }
+  input[type=text], input[type=number] {
+    font: inherit; color: var(--fg); background: #10141b;
+    border: 1px solid var(--line); border-radius: 7px; padding: 7px 9px; width: 100%;
+  }
+  input:focus { outline: 1px solid #3a4considerable; }
+  .checks { display: flex; flex-wrap: wrap; gap: 8px 18px; }
+  .check { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--fg); }
+  .check input { margin: 0; }
+
+  .log {
+    margin: 0; max-height: 240px; overflow: auto; padding: 10px 12px;
+    background: #0b0e13; border: 1px solid var(--line); border-radius: 8px;
+    font: 12px/1.55 ui-monospace, SFMono-Regular, Consolas, monospace;
+    color: #b9bfc9; white-space: pre-wrap; overflow-wrap: anywhere;
+  }
 </style>
 </head>
 <body>
 <main>
-  <h1>接收监控</h1>
-
-  <div class="card">
-    <h2>一次性配对码</h2>
-    <div id="code" class="code">—— ——</div>
-    <div id="codeHint" class="hint">等待 Hub 下发配对码</div>
-    <button id="copyCode" type="button" disabled>复制配对码</button>
+  <div class="top">
+    <h1>RelayMic 接收端</h1>
+    <span id="state" class="pill warn">—</span>
   </div>
 
-  <div class="card">
-    <div id="state" class="warn">—</div>
-    <div id="path">—</div>
-    <div class="meter"><i id="level"></i></div>
-    <div class="stats">
-      <span>缓冲 <b id="buffered">—</b></span>
-      <span>丢弃 <b id="dropped">—</b></span>
-      <span>欠载 <b id="starved">—</b></span>
-      <span>收包 <b id="received">—</b></span>
-      <span>丢包 <b id="lost">—</b></span>
-    </div>
-    <button id="closeSession" type="button" disabled>断开当前通话</button>
+  <div id="error" class="banner" hidden></div>
+
+  <div class="grid">
+    <section class="card span">
+      <h2>一次性配对码 <span id="codeHint" class="hint">等待 Hub 下发</span></h2>
+      <div id="code" class="code">—— ——</div>
+      <div class="row">
+        <button id="copyCode" type="button" disabled>复制配对码</button>
+        <button id="closeSession" type="button" disabled>断开当前通话</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>链路</h2>
+      <div id="pathMode" class="mode">未建立</div>
+      <div id="pathText" class="hint wrap">—</div>
+      <dl class="kv">
+        <dt>RTT</dt><dd id="rtt">—</dd>
+        <dt>本端候选</dt><dd id="localCand">—</dd>
+        <dt>对端候选</dt><dd id="remoteCand">—</dd>
+      </dl>
+    </section>
+
+    <section class="card">
+      <h2>电平</h2>
+      <div class="meter-row"><span class="meter-label">上行</span><div class="meter"><i id="level"></i></div><b id="levelDb">—</b></div>
+      <div class="meter-row"><span class="meter-label">回传</span><div class="meter"><i id="returnLevel"></i></div><b id="returnDb">—</b></div>
+      <div class="stats">
+        <span>缓冲 <b id="buffered">—</b></span>
+        <span>丢弃 <b id="dropped">—</b></span>
+        <span>欠载 <b id="starved">—</b></span>
+        <span>收包 <b id="received">—</b></span>
+        <span>丢包 <b id="lost">—</b></span>
+      </div>
+    </section>
+
+    <section class="card span">
+      <h2>当前运行</h2>
+      <dl class="kv">
+        <dt>Hub</dt><dd id="hub">—</dd>
+        <dt>输出设备</dt><dd id="outputDevice">—</dd>
+        <dt>回传</dt><dd id="returnSource">—</dd>
+        <dt>中继模式</dt><dd id="relayMode">—</dd>
+        <dt>配置文件</dt><dd id="configPath">—</dd>
+      </dl>
+    </section>
+
+    <section class="card span">
+      <h2>设置</h2>
+      <form id="settings">
+        <label>Hub 地址
+          <input id="cfgHub" type="text" spellcheck="false" placeholder="wss://主机:9443/ws/receiver">
+        </label>
+        <div class="two">
+          <label>输出设备（写进虚拟麦克风）
+            <input id="cfgDevice" type="text" spellcheck="false" placeholder="CABLE Input">
+          </label>
+          <label>回传：采集虚拟线
+            <input id="cfgReturnDevice" type="text" spellcheck="false" placeholder="留空表示不回传">
+          </label>
+        </div>
+        <div class="two">
+          <label>回传：环回采集播放设备
+            <input id="cfgReturnLoopback" type="text" spellcheck="false" placeholder="和上面只能填一个">
+          </label>
+          <label>抖动缓冲（毫秒，20–2000）
+            <input id="cfgBuffer" type="number" min="20" max="2000" step="10">
+          </label>
+        </div>
+        <label>固定增益（0 表示自动增益）
+          <input id="cfgGain" type="number" min="0" max="100" step="0.1">
+        </label>
+        <div class="checks">
+          <label class="check"><input id="cfgNoCgnat" type="checkbox"> 排除 CGNAT 候选</label>
+          <label class="check"><input id="cfgForceRelay" type="checkbox"> 强制 TURN 中继</label>
+          <label class="check"><input id="cfgTurnTunnel" type="checkbox"> TURN 走控制面隧道</label>
+          <label class="check"><input id="cfgDtx" type="checkbox"> 静音时停发包（DTX）</label>
+        </div>
+        <div class="row">
+          <button id="save" class="primary" type="submit">保存并重启接收端</button>
+          <span id="saveMsg" class="hint"></span>
+        </div>
+      </form>
+    </section>
+
+    <section class="card span">
+      <h2>日志 <span id="logHint" class="hint"></span></h2>
+      <pre id="log" class="log">—</pre>
+    </section>
   </div>
-
-  <div class="card">
-    <h2>运行配置</h2>
-    <dl class="config">
-      <dt>Hub</dt><dd id="hub">—</dd>
-      <dt>输出设备</dt><dd id="outputDevice">—</dd>
-      <dt>回传</dt><dd id="returnSource">—</dd>
-      <dt>中继模式</dt><dd id="relayMode">—</dd>
-    </dl>
-  </div>
-
-</main>
-
-<script>
+</main><script>
 const $ = id => document.getElementById(id);
+
+const MODE_LABEL = { direct: '直连', relay: 'TURN 中继', tunnel: '隧道中继（经控制面）' };
+
 let pairingCode = '';
+let formDirty = false;
 
 // 接收端多数故障（进程没起、局域网断了）会让 fetch 直接抛错而不是返回非 200，
 // 两种情况一律归一成"离线"，用户不用分辨是哪一种。
@@ -124,14 +224,20 @@ async function pollStatus() {
 }
 
 function renderStatus(s) {
-  const connected = s.state === 'connected';
-  $('state').textContent = s.state || '—';
-  $('state').className = connected ? 'ok' : 'warn';
-  $('path').textContent = s.path || '—';
+  const state = $('state');
+  state.textContent = s.state || '—';
+  state.className = 'pill ' + (s.state === 'connected' ? 'ok' : s.error ? 'err' : 'warn');
 
-  // dBFS 是负数，-60 视为静音、0 视为削波，线性映射成宽度。
-  const db = typeof s.levelDb === 'number' ? s.levelDb : -60;
-  $('level').style.width = Math.max(0, Math.min(100, (db + 60) / 60 * 100)) + '%';
+  // 起不来的原因必须留在页面上：设备没插、地址写错、凭据过期，
+  // 都只有这一句话能说清。
+  $('error').hidden = !s.error;
+  $('error').textContent = s.error || '';
+
+  renderPath(s.path || {}, s.pathText);
+  setMeter($('level'), s.levelDb);
+  setMeter($('returnLevel'), s.returnLevelDb);
+  $('levelDb').textContent = fmtDb(s.levelDb);
+  $('returnDb').textContent = fmtDb(s.returnLevelDb);
 
   $('buffered').textContent = s.bufferedMs != null ? s.bufferedMs + ' ms' : '—';
   $('dropped').textContent = s.dropped ?? '—';
@@ -140,21 +246,38 @@ function renderStatus(s) {
   $('lost').textContent = s.lost ?? '—';
 
   renderPairing(s.pairing || {});
+
   $('hub').textContent = s.hub || '—';
   $('outputDevice').textContent = s.outputDevice || '—';
   $('returnSource').textContent = s.returnSource ? `${s.returnMode || '回传'}：${s.returnSource}` : '未配置';
-  $('relayMode').textContent = s.forceRelay ? '强制 TURN 中继' : '自动（直连优先）';
+  $('relayMode').textContent = (s.forceRelay ? '强制 TURN 中继' : '自动（直连优先）')
+    + (s.turnTunnel ? '，TURN 走控制面隧道' : '');
+  $('configPath').textContent = s.configPath || '—';
   $('closeSession').disabled = !s.sessionActive;
+
+  // 表单只在用户没动过的时候跟着服务端走：正在输入时被回填覆盖是最烦人的。
+  if (s.config && !formDirty) fillConfig(s.config);
+}
+
+function renderPath(path, text) {
+  const label = MODE_LABEL[path.mode];
+  const mode = $('pathMode');
+  mode.textContent = label || '未建立';
+  mode.className = 'mode ' + (path.mode === 'direct' ? 'ok' : path.mode ? 'warn' : '');
+  $('pathText').textContent = text || '—';
+  $('rtt').textContent = path.rttMs ? Math.round(path.rttMs) + ' ms' : '—';
+  $('localCand').textContent = path.localCandidate || '—';
+  $('remoteCand').textContent = path.remoteCandidate || '—';
 }
 
 function renderPairing(pairing) {
   pairingCode = pairing.code || '';
   if (!pairing.active) {
     $('code').textContent = '—— ——';
-    $('codeHint').textContent = '等待 Hub 下发配对码';
+    $('codeHint').textContent = '等待 Hub 下发';
   } else if (pairing.hidden) {
     $('code').textContent = '已隐藏';
-    $('codeHint').textContent = '配对码仅在 Receiver 本机浏览器显示';
+    $('codeHint').textContent = '配对码只在接收端本机浏览器显示';
   } else {
     $('code').textContent = pairingCode.slice(0, 3) + ' ' + pairingCode.slice(3);
     $('codeHint').textContent = `剩余 ${formatCountdown(pairing.expiresInSec)}；用过即失效`;
@@ -162,10 +285,60 @@ function renderPairing(pairing) {
   $('copyCode').disabled = !pairingCode;
 }
 
-function formatCountdown(seconds) {
-  seconds = Math.max(0, Number(seconds) || 0);
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+function fillConfig(cfg) {
+  $('cfgHub').value = cfg.hub || '';
+  $('cfgDevice').value = cfg.device || '';
+  $('cfgReturnDevice').value = cfg.returnDevice || '';
+  $('cfgReturnLoopback').value = cfg.returnLoopback || '';
+  $('cfgBuffer').value = cfg.bufferMs ?? 150;
+  $('cfgGain').value = cfg.gain ?? 0;
+  $('cfgNoCgnat').checked = !!cfg.noCgnat;
+  $('cfgForceRelay').checked = !!cfg.forceRelay;
+  $('cfgTurnTunnel').checked = !!cfg.turnTunnel;
+  $('cfgDtx').checked = !!cfg.dtx;
 }
+
+function readConfig() {
+  return {
+    hub: $('cfgHub').value.trim(),
+    device: $('cfgDevice').value.trim(),
+    returnDevice: $('cfgReturnDevice').value.trim(),
+    returnLoopback: $('cfgReturnLoopback').value.trim(),
+    bufferMs: Number($('cfgBuffer').value),
+    gain: Number($('cfgGain').value),
+    noCgnat: $('cfgNoCgnat').checked,
+    forceRelay: $('cfgForceRelay').checked,
+    turnTunnel: $('cfgTurnTunnel').checked,
+    dtx: $('cfgDtx').checked,
+  };
+}
+
+// 保存是写操作：带上自定义头，服务端据此拒绝浏览器里其他页面发起的 POST。
+$('settings').onsubmit = async event => {
+  event.preventDefault();
+  $('save').disabled = true;
+  $('saveMsg').textContent = '保存中…';
+  try {
+    const res = await fetch('/api/config', {
+      method: 'POST',
+      headers: { 'X-RelayMic': '1', 'Content-Type': 'application/json' },
+      body: JSON.stringify(readConfig()),
+    });
+    if (res.status === 202) {
+      // 换实例要重开音频设备，可能等上几十秒；进度看上面的状态和日志。
+      $('saveMsg').textContent = '已保存，正在按新设置重启…';
+      formDirty = false;
+    } else {
+      $('saveMsg').textContent = '保存失败：' + (await res.text()).trim();
+    }
+  } catch {
+    $('saveMsg').textContent = '保存失败：本机控制台无响应';
+  } finally {
+    $('save').disabled = false;
+  }
+};
+
+$('settings').addEventListener('input', () => { formDirty = true; });
 
 $('copyCode').onclick = async () => {
   if (!pairingCode) return;
@@ -177,7 +350,6 @@ $('copyCode').onclick = async () => {
   }
 };
 
-// 断开是写操作：带上自定义头，服务端据此拒绝浏览器里其他页面发起的 POST。
 $('closeSession').onclick = async () => {
   $('closeSession').disabled = true;
   try {
@@ -188,21 +360,61 @@ $('closeSession').onclick = async () => {
   }
 };
 
+// dBFS 是负数：-60 当静音、0 当削波，线性映射成宽度。接近满刻度就变色，
+// 因为那意味着下游听得到削顶的杂音。
+function setMeter(el, db) {
+  const v = typeof db === 'number' ? Math.max(-60, Math.min(0, db)) : -60;
+  el.style.width = ((v + 60) / 60 * 100) + '%';
+  el.style.background = v > -6 ? 'var(--err)' : v > -20 ? 'var(--warn)' : 'var(--ok)';
+}
+
+function fmtDb(db) {
+  return typeof db === 'number' ? db.toFixed(1) + ' dBFS' : '—';
+}
+
+function formatCountdown(seconds) {
+  seconds = Math.max(0, Number(seconds) || 0);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+// 日志比状态变化慢，而且一屏要看的是"刚才发生了什么"，不必每秒搬一遍。
+async function pollEvents() {
+  try {
+    const res = await fetch('/api/events');
+    if (!res.ok) return;
+    const events = (await res.json()).events || [];
+    const box = $('log');
+    const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 8;
+    box.textContent = events.length ? events.join('\n') : '—';
+    if (atBottom) box.scrollTop = box.scrollHeight;
+    $('logHint').textContent = `最近 ${events.length} 行`;
+  } catch {
+    // 日志拉不到不值得在页面上报错：状态卡片已经在说更重要的那件事了。
+  }
+}
+
 function renderOffline() {
-  $('state').textContent = '接收端离线';
-  $('state').className = 'err';
-  $('path').textContent = '—';
-  $('level').style.width = '0';
+  const state = $('state');
+  state.textContent = '接收端离线';
+  state.className = 'pill err';
+  $('error').hidden = true;
+  renderPath({}, '');
+  setMeter($('level'), undefined);
+  setMeter($('returnLevel'), undefined);
+  $('levelDb').textContent = $('returnDb').textContent = '—';
   $('buffered').textContent = $('dropped').textContent = $('starved').textContent =
     $('received').textContent = $('lost').textContent = '—';
   renderPairing({});
   $('closeSession').disabled = true;
-  $('hub').textContent = $('outputDevice').textContent = $('returnSource').textContent = $('relayMode').textContent = '—';
+  for (const id of ['hub', 'outputDevice', 'returnSource', 'relayMode', 'configPath']) {
+    $(id).textContent = '—';
+  }
 }
 
 pollStatus();
+pollEvents();
 setInterval(pollStatus, 1000);
-
+setInterval(pollEvents, 3000);
 </script>
 </body>
 </html>

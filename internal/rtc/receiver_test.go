@@ -112,3 +112,62 @@ func senderOffer(t *testing.T) webrtc.SessionDescription {
 
 	return *pc.LocalDescription()
 }
+
+// 链路模式是给运维看的结论，不能靠候选类型猜：开着 TURN 隧道时本端看到的是
+// 回环地址上的中继候选，那和"对端在公网中继上"是两件不同的事。
+func TestClassifyPathNamesTheMode(t *testing.T) {
+	host := webrtc.ICECandidateStats{CandidateType: webrtc.ICECandidateTypeHost, IP: "192.168.1.5", Port: 54321}
+	srflx := webrtc.ICECandidateStats{CandidateType: webrtc.ICECandidateTypeSrflx, IP: "203.0.113.7", Port: 40000}
+	relay := webrtc.ICECandidateStats{CandidateType: webrtc.ICECandidateTypeRelay, IP: "198.51.100.9", Port: 3478}
+
+	cases := []struct {
+		name   string
+		local  webrtc.ICECandidateStats
+		remote webrtc.ICECandidateStats
+		tunnel bool
+		want   string
+	}{
+		{name: "局域网直连", local: host, remote: host, want: PathDirect},
+		{name: "公网打洞成功", local: srflx, remote: srflx, want: PathDirect},
+		{name: "本端走中继", local: relay, remote: srflx, want: PathRelay},
+		{name: "对端走中继", local: srflx, remote: relay, want: PathRelay},
+		// 隧道开着但这一对候选是直连：不能因为开着隧道就把直连说成隧道。
+		{name: "隧道开着却直连", local: srflx, remote: srflx, tunnel: true, want: PathDirect},
+		{name: "隧道里的中继", local: relay, remote: srflx, tunnel: true, want: PathTunnel},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := classifyPath(tc.local, tc.remote, 42, tc.tunnel)
+			if got.Mode != tc.want {
+				t.Fatalf("Mode = %q，want %q", got.Mode, tc.want)
+			}
+			if got.RTTMs != 42 {
+				t.Fatalf("RTTMs = %v，want 42", got.RTTMs)
+			}
+			if got.LocalCandidate != "host 192.168.1.5:54321" && tc.local == host {
+				t.Fatalf("LocalCandidate = %q", got.LocalCandidate)
+			}
+			if got.RemoteCandidate == "" {
+				t.Fatal("RemoteCandidate 丢了")
+			}
+		})
+	}
+}
+
+func TestPathTextNamesBothEnds(t *testing.T) {
+	p := Path{Mode: PathTunnel, RTTMs: 123, LocalCandidate: "relay 198.51.100.9:3478", RemoteCandidate: "srflx 203.0.113.7:40000"}
+	text := p.Text()
+	for _, want := range []string{"relay 198.51.100.9:3478", "srflx 203.0.113.7:40000", "123ms"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("Text() = %q，缺 %q", text, want)
+		}
+	}
+}
+
+// 还没连上时没有候选对，页面得看到一句人话而不是空白。
+func TestPathTextOnAnEmptyPath(t *testing.T) {
+	if got := (Path{}).Text(); got != "未能取得候选对" {
+		t.Fatalf("Text() = %q", got)
+	}
+}

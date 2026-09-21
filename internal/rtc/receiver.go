@@ -31,9 +31,9 @@ const (
 // 每次收到新的 offer 就重建连接 —— 发送端刷新页面、换机器、断线重来，
 // 都走同一条路径，不需要额外的重连逻辑。
 type Receiver struct {
-	onPCM   func([]int16)
-	onState func(webrtc.PeerConnectionState)
-	onPath  func(string)
+	onPCM    func([]int16)
+	onState  func(webrtc.PeerConnectionState)
+	onPath   func(Path)
 	onNotice func(string)
 
 	stats RTPStats
@@ -43,6 +43,7 @@ type Receiver struct {
 	iceServers   []webrtc.ICEServer
 	excludeCGNAT bool
 	forceRelay   bool
+	tunnel       bool
 
 	mu sync.Mutex
 	pc *webrtc.PeerConnection
@@ -272,10 +273,42 @@ func (s *RTPStats) Snapshot() (received, lost, reorder, dup int) {
 // Stats 返回 RTP 到达质量。
 func (r *Receiver) Stats() *RTPStats { return &r.stats }
 
+// Path 是被选中的那条链路。
+// Mode 由 Receiver 自己判定，不从候选类型反推：开着 TURN 隧道时，本端看到的
+// 是一个回环地址上的中继候选，和对端看到的 relay 完全不是一回事 —— 隧道是
+// 本机才知道的事实，只有这里说得清。
+type Path struct {
+	Mode            string  `json:"mode"`
+	RTTMs           float64 `json:"rttMs"`
+	LocalCandidate  string  `json:"localCandidate"`
+	RemoteCandidate string  `json:"remoteCandidate"`
+}
+
+const (
+	// PathDirect 两端直接打通，音频不经过任何第三方。
+	PathDirect = "direct"
+	// PathRelay 音频经 TURN 服务器中转。
+	PathRelay = "relay"
+	// PathTunnel 音频经 TURN 中转，而 TURN 流量又套在控制面隧道里 ——
+	// 只放行 HTTP 代理的网络里，这是唯一的出路。
+	PathTunnel = "tunnel"
+)
+
+// Text 是给人看的一句话。
+func (p Path) Text() string {
+	if p.LocalCandidate == "" {
+		return "未能取得候选对"
+	}
+	return fmt.Sprintf("本端 %s ←→ 对端 %s  RTT=%.0fms", p.LocalCandidate, p.RemoteCandidate, p.RTTMs)
+}
+
+// SetTunnel 告诉 Receiver：TURN 流量是从控制面隧道里出去的。
+func (r *Receiver) SetTunnel(on bool) { r.tunnel = on }
+
 // OnPath 注册链路回调，连接建立时告知实际选中的候选对。
 // 这是判断"音频到底走的哪条路"的唯一可靠依据 —— 页面上显示的"直连"
 // 可能是一个 VPN 的虚拟网卡地址，那条路实际上还绕了半个地球。
-func (r *Receiver) OnPath(fn func(string)) { r.onPath = fn }
+func (r *Receiver) OnPath(fn func(Path)) { r.onPath = fn }
 
 // OnNotice 接收非致命的协商说明，用来写日志。
 //
@@ -292,8 +325,8 @@ func (r *Receiver) notice(msg string) {
 // SetDownlink 打开回传：answer 里会挂上一条只发不收的音轨。
 func (r *Receiver) SetDownlink(d *Downlink) { r.downlink = d }
 
-// describePath 从 ICE 统计里还原出被选中的那条链路。
-func describePath(pc *webrtc.PeerConnection) string {
+// pathFromStats 从 ICE 统计里还原出被选中的那条链路。
+func pathFromStats(pc *webrtc.PeerConnection, tunnel bool) Path {
 	stats := pc.GetStats()
 	for _, s := range stats {
 		pair, ok := s.(webrtc.ICECandidatePairStats)
@@ -305,12 +338,33 @@ func describePath(pc *webrtc.PeerConnection) string {
 		if !lok || !rok {
 			continue
 		}
-		return fmt.Sprintf("本端 %s %s:%d ←→ 对端 %s %s:%d  RTT=%.0fms",
-			local.CandidateType, local.IP, local.Port,
-			remote.CandidateType, remote.IP, remote.Port,
-			pair.CurrentRoundTripTime*1000)
+		return classifyPath(local, remote, pair.CurrentRoundTripTime*1000, tunnel)
 	}
-	return "未能取得候选对"
+	return Path{}
+}
+
+// classifyPath 判定一条候选对属于哪种链路。
+//
+// 出现中继候选就说明音频经 TURN 走；至于那个 TURN 是不是从控制面隧道里
+// 出去的，只有本机知道 —— 隧道开着并且确实用上了中继，才算 tunnel。
+func classifyPath(local, remote webrtc.ICECandidateStats, rttMs float64, tunnel bool) Path {
+	mode := PathDirect
+	if local.CandidateType == webrtc.ICECandidateTypeRelay || remote.CandidateType == webrtc.ICECandidateTypeRelay {
+		mode = PathRelay
+		if tunnel {
+			mode = PathTunnel
+		}
+	}
+	return Path{
+		Mode:            mode,
+		RTTMs:           rttMs,
+		LocalCandidate:  describeCandidate(local),
+		RemoteCandidate: describeCandidate(remote),
+	}
+}
+
+func describeCandidate(c webrtc.ICECandidateStats) string {
+	return fmt.Sprintf("%s %s:%d", c.CandidateType, c.IP, c.Port)
 }
 
 // Answer 处理一个来自发送端的 SDP offer，返回 answer。
@@ -369,7 +423,7 @@ func (r *Receiver) Answer(offer webrtc.SessionDescription) (*webrtc.SessionDescr
 			r.onState(state)
 		}
 		if state == webrtc.PeerConnectionStateConnected && r.onPath != nil {
-			r.onPath(describePath(pc))
+			r.onPath(pathFromStats(pc, r.tunnel))
 		}
 		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateClosed {
 			r.mu.Lock()

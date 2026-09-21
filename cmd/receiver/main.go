@@ -47,6 +47,10 @@ func main() {
 	opts, cfgErr := parseFlags()
 
 	log.SetFlags(log.Ltime)
+	// 本机诊断页要能回看"刚才发生了什么"。把日志接一份进内存：页面上看到的
+	// 和日志里写的就成了同一份事实，不会因为哪处忘了记事件而漏掉。
+	events := monitor.NewEventLog(eventsKept)
+	log.SetOutput(io.MultiWriter(os.Stderr, events))
 
 	// AGPL 说的 "Appropriate Legal Notices"：启动时把版权、无担保、
 	// 以及源码在哪告诉用户一次。命令行程序的惯例做法。
@@ -59,6 +63,7 @@ func main() {
 		st:       &statusState{state: "启动中"},
 		pairing:  monitor.NewPairingState(),
 		sessions: monitor.NewSessionState(),
+		events:   events,
 	}
 	// 控制台先起：它只读状态、不发音频，运行实例起不来时它照样要能开。
 	defer closeMonitor(c.serve())
@@ -81,6 +86,10 @@ func main() {
 	log.Println("退出")
 	c.stopRuntime()
 }
+
+// eventsKept 是诊断页能回看的日志行数。够看清刚才发生了什么，又不至于让
+// 每秒一次的轮询变成搬运一大坨文本。
+const eventsKept = 200
 
 // options 是这次运行的完整配置：命令行 + 配置文件合起来的结果。
 type options struct {
@@ -246,6 +255,8 @@ type console struct {
 	pairing  *monitor.PairingState
 	sessions *monitor.SessionState
 
+	events *monitor.EventLog
+
 	// mu 护着 opts 和 rt：页面在读它们，保存设置和重启在写它们。
 	mu sync.Mutex
 	rt *instance
@@ -355,6 +366,7 @@ func (c *console) routes() *http.ServeMux {
 	// 浏览器里任何一个页面都能往 127.0.0.1 发 POST。
 	mux.HandleFunc("POST /api/session/close", c.closeSession)
 	mux.HandleFunc("POST /api/config", c.saveConfig)
+	mux.HandleFunc("GET /api/events", c.serveEvents)
 	return mux
 }
 
@@ -371,6 +383,7 @@ func (c *console) status(w http.ResponseWriter, r *http.Request) {
 		"state":         view.state,
 		"error":         view.err,
 		"path":          view.path,
+		"pathText":      view.path.Text(),
 		"levelDb":       view.levelDB,
 		"returnLevelDb": view.returnDB,
 		"gain":          view.gain,
@@ -448,6 +461,19 @@ func (c *console) closeSession(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Println("本机控制台结束了当前通话")
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// serveEvents 把最近的日志交给页面。
+//
+// 只给回环看：日志里有设备名、Hub 地址这些本机信息，没有理由让局域网里的
+// 别的机器读走。
+func (c *console) serveEvents(w http.ResponseWriter, r *http.Request) {
+	if !monitor.IsLoopbackRemoteAddr(r.RemoteAddr) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"events": c.events.Recent()})
 }
 
 // maxConfigBytes 是设置页请求体的上限。它只是一份设置，没有理由更大。
@@ -604,8 +630,9 @@ func (r *instance) start() error {
 			r.st.setState(state.String())
 		},
 	)
-	r.receiver.OnPath(func(path string) {
-		log.Println("链路:", path)
+	r.receiver.SetTunnel(r.opts.turnTunnel)
+	r.receiver.OnPath(func(path rtc.Path) {
+		log.Println("链路:", path.Text())
 		r.st.setPath(path)
 	})
 	r.receiver.ExcludeCGNAT(r.opts.noCGNAT)
@@ -883,7 +910,7 @@ func (r *instance) stop() {
 type statusState struct {
 	mu       sync.Mutex
 	state    string
-	path     string
+	path     rtc.Path
 	err      string
 	levelDB  float64
 	returnDB float64
@@ -893,7 +920,7 @@ type statusState struct {
 // statusView 是一次性快照，避免处理器拿着锁去拼 JSON。
 type statusView struct {
 	state    string
-	path     string
+	path     rtc.Path
 	err      string
 	levelDB  float64
 	returnDB float64
@@ -906,7 +933,7 @@ func (s *statusState) setState(state string) {
 	s.state = state
 }
 
-func (s *statusState) setPath(path string) {
+func (s *statusState) setPath(path rtc.Path) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.path = path
