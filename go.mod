@@ -4,6 +4,7 @@ go 1.26.6
 
 require (
 	fyne.io/fyne/v2 v2.8.0
+	github.com/coder/websocket v1.8.15
 	github.com/gen2brain/malgo v0.11.25
 	github.com/hraban/opus v0.0.0-20260708213942-bde8e4304501
 	github.com/pion/interceptor v0.1.47

@@ -1,16 +1,20 @@
-// receiver 跑在被远程控制的那台 Mac 上。
+// receiver 跑在被远程控制的那台机器上。
 //
-// 它做三件事：托管发送端网页、收 WebRTC 音频、把音频写进虚拟麦克风。
+// 它做两件事：主动连到公网控制面等发送端，收到音频后写进虚拟麦克风。
 // 用户在任何吃麦克风的软件里选中那个虚拟设备，就能听到本地说的话。
+//
+// 它不监听任何端口 —— 公网入口只有控制面一个。这台机器在 NAT 或公司防火墙
+// 后面也能用，因为整条控制通路都是它主动连出去的出站 443。
 package main
 
 import (
-	"crypto/tls"
+	"context"
 	"encoding/json"
+	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"math"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -24,15 +28,15 @@ import (
 	"time"
 
 	"github.com/hueshu/relaymic/internal/audio"
-	"github.com/hueshu/relaymic/internal/discover"
+	"github.com/hueshu/relaymic/internal/audiodevice"
+	"github.com/hueshu/relaymic/internal/hubclient"
 	"github.com/hueshu/relaymic/internal/receiverconfig"
 	"github.com/hueshu/relaymic/internal/rtc"
-	"github.com/hueshu/relaymic/internal/tlscert"
 	"github.com/hueshu/relaymic/internal/web"
 	"github.com/pion/webrtc/v4"
 )
 
-func defaultCertDir() string {
+func defaultDataDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ".relaymic"
@@ -40,16 +44,18 @@ func defaultCertDir() string {
 	return filepath.Join(home, ".config", "relaymic")
 }
 
-func defaultSegmentsDir() string { return filepath.Join(defaultCertDir(), "recordings") }
+func defaultSegmentsDir() string { return filepath.Join(defaultDataDir(), "recordings") }
 
 func main() {
-	addr := flag.String("addr", ":7420", "监听地址")
+	hub := flag.String("hub", "", "公网控制面地址，形如 wss://mic.example.com/ws/receiver")
+	token := flag.String("token", "", "接收端凭据；也可以用 -token-file")
+	tokenFile := flag.String("token-file", "", "从文件读接收端凭据（取首行）")
+	monitor := flag.String("monitor", "", "本机诊断页监听地址，形如 127.0.0.1:7420；留空表示不监听任何端口")
+	returnDevice := flag.String("return-device", "", "回传：采集这个录制设备（第二条虚拟线，例如 CABLE-A Output）")
+	returnLoopback := flag.String("return-loopback", "", "回传：环回采集这个播放设备（例如 ヘッドホン）；会带上该设备的全部系统声音")
 	deviceName := flag.String("device", receiverconfig.DefaultOutputDeviceForOS(runtime.GOOS), "输出设备名（子串匹配）；Windows 默认匹配 VB-CABLE")
 	// 150ms 是实测值：80ms 扛不住 WiFi 突发，600ms 白垫延迟。
 	bufferMS := flag.Int("buffer", 150, "抖动缓冲目标深度（毫秒）")
-	plain := flag.Bool("plain", false, "用 http 而非 https（只有从本机访问才够用）")
-	certDir := flag.String("cert-dir", defaultCertDir(), "自签证书存放目录")
-	certHosts := flag.String("cert-hosts", "", "额外写进证书的域名或 IP，逗号分隔")
 	gain := flag.Float64("gain", 0, "固定增益倍数；留空或 0 表示用自动增益（AGC）")
 	meter := flag.Bool("meter", false, "每秒打印一次收到的音频电平，用来诊断音量")
 	// 默认不排除：对称型 NAT 下没有 TURN 就打不通，排掉覆盖网等于自断退路。
@@ -316,82 +322,118 @@ func main() {
 	}
 	defer receiver.Close()
 
-	mux := http.NewServeMux()
-	mux.Handle("/", http.FileServer(http.FS(web.FS())))
-	// 发送端必须用同一套 ICE 配置：只有它也拿到 TURN，
-	// 才会生成中继候选，ICE 才可能选中那条低延迟的路。
-	// 机器名随 ICE 配置一起给发送端：网页/界面上"IP 旁边是哪台电脑"
-	// 由每台自己回答。优先用 Tailscale 里设定的设备名（用户按它管理机器，
-	// 显示别的名字对不上号），退而求其次才是系统的电脑名。
-	name := discover.SelfName()
-	if name != "" {
-		log.Println("机器名(来自 Tailscale):", name)
+	// 回传：把公司电脑上的声音送回发送端。
+	//
+	// 两条路语义差得很远，必须显式选一条：采第二条虚拟线只拿到目标应用的声音；
+	// 环回采播放设备会把这台机器上所有系统声音一起送进会议。
+	returnSrc, err := resolveReturnSource(*returnDevice, *returnLoopback)
+	if err != nil {
+		log.Fatalln(err)
 	}
-	if name == "" {
-		if out, err := exec.Command("/usr/sbin/scutil", "--get", "ComputerName").Output(); err == nil {
-			name = strings.TrimSpace(string(out))
-		}
+	if err := returnSrc.checkNotFeedback(dev.Name); err != nil {
+		log.Fatalln(err)
 	}
-	if name == "" {
-		name, _ = os.Hostname()
-		name = strings.TrimSuffix(name, ".local")
-	}
-	if name != "" {
-		log.Println("机器名:", name)
-	}
-	mux.HandleFunc("/ice-config", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"iceServers":   ice,
-			"excludeCGNAT": *noCGNAT,
-			"name":         name,
-		})
-	})
-	mux.HandleFunc("/offer", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "只接受 POST", http.StatusMethodNotAllowed)
-			return
-		}
-		var offer webrtc.SessionDescription
-		if err := json.NewDecoder(r.Body).Decode(&offer); err != nil {
-			http.Error(w, "offer 解析失败: "+err.Error(), http.StatusBadRequest)
-			return
-		}
-		answer, err := receiver.Answer(offer)
+	// 回传电平：和上行一样单独取，用来回答"对面到底有没有声音进来"。
+	// 没有这个读数，"听不到会议"只能靠猜。
+	var returnLevel *levelMeter
+	if returnSrc.enabled() {
+		downlink, err := rtc.NewDownlink()
 		if err != nil {
-			log.Println("协商失败:", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+			log.Fatalln("建立回传链路失败:", err)
 		}
-		log.Println("发送端已接入", r.RemoteAddr)
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(answer)
-	})
+		receiver.SetDownlink(downlink)
+		returnLevel = newLevelMeter()
+		onReturnPCM := func(pcm []int16) {
+			returnLevel.observe(pcm)
+			downlink.Write(pcm)
+		}
 
-	// 替浏览器发现接收端：网页拿不到 tailscale 设备表，这台替它扫。
-	// 结果含扫描者自己拿不到的"其他台"；网页把自己的 origin 合并进去。
-	var rcvMu sync.Mutex
-	var rcvCache []string
-	var rcvAt time.Time
-	mux.HandleFunc("/api/receivers", func(w http.ResponseWriter, r *http.Request) {
-		rcvMu.Lock()
-		if time.Since(rcvAt) > 30*time.Second {
-			found, err := discover.Receivers()
+		var captureDev audio.Device
+		var capturer *audio.Capturer
+		if returnSrc.loopback {
+			captureDev, err = actx.FindLoopback(returnSrc.selector)
 			if err != nil {
-				log.Println("接收端扫描失败:", err)
-			} else {
-				rcvCache = found
-				rcvAt = time.Now()
+				log.Fatalln(err)
 			}
+			capturer, err = actx.NewLoopbackCapturer(captureDev, rtc.SampleRate, rtc.Channels, onReturnPCM)
+		} else {
+			captureDev, err = actx.FindCapture(returnSrc.selector)
+			if err != nil {
+				log.Fatalln(err)
+			}
+			capturer, err = actx.NewCapturer(captureDev, rtc.SampleRate, rtc.Channels, onReturnPCM)
 		}
-		out := rcvCache
-		rcvMu.Unlock()
-		if out == nil {
-			out = []string{}
+		if err != nil {
+			log.Fatalln("打开回传采集失败:", err)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(out)
-	})
+		defer capturer.Close()
+		if returnSrc.loopback {
+			log.Printf("回传: 环回采集 %s（含这台机器的全部系统声音）", captureDev.Name)
+		} else {
+			log.Printf("回传: 采集 %s", captureDev.Name)
+		}
+	}
+	receiver.OnNotice(func(msg string) { log.Println(msg) })
+
+	name, _ := os.Hostname()
+	name = strings.TrimSuffix(name, ".local")
+	if name == "" {
+		name = "RelayMic 接收端"
+	}
+	log.Println("机器名:", name)
+
+	// 接收端不监听任何端口：公网入口只有控制面一个。
+	// 这台机器在 NAT / 公司防火墙后面也能用，因为整条控制通路都是出站 443。
+	if *hub == "" {
+		log.Fatalln("缺少 -hub：接收端必须主动连到公网控制面，不再在本机监听端口")
+	}
+	secret, err := readToken(*token, *tokenFile)
+	if err != nil {
+		log.Fatalln(err)
+	}
+	client, err := hubclient.New(hubclient.Config{URL: *hub, Token: secret})
+	if err != nil {
+		log.Fatalln(err)
+	}
+	hubCtx, stopHub := context.WithCancel(context.Background())
+	defer stopHub()
+	go func() {
+		err := client.Run(hubCtx, hubclient.Handlers{
+			OnCode: func(code string, expiresIn time.Duration) {
+				log.Printf("已连接 %s", *hub)
+				log.Printf("设备: %s", dev.Name)
+				log.Printf("配对码: %s（%d 分钟内有效，用过即换）", code, int(expiresIn.Minutes()))
+				st.setState("等待发送端")
+			},
+			OnJoined: func(session string) {
+				log.Println("发送端已接入")
+			},
+			OnLeft: func(session string) {
+				log.Println("发送端已离开，控制面已换新配对码")
+			},
+			OnError: func(message string) {
+				log.Println("控制面:", message)
+			},
+			// SDP 只在两端之间走：控制面原样转发，这里也只做编解码转换，
+			// 不重新协商、不改写候选。
+			OnOffer: func(ctx context.Context, session string, offer json.RawMessage) (json.RawMessage, error) {
+				var sdp webrtc.SessionDescription
+				if err := json.Unmarshal(offer, &sdp); err != nil {
+					return nil, fmt.Errorf("解析 offer: %w", err)
+				}
+				answer, err := receiver.Answer(sdp)
+				if err != nil {
+					return nil, err
+				}
+				return json.Marshal(answer)
+			},
+		})
+		if err != nil {
+			log.Fatalln("信令连接失败:", err)
+		}
+	}()
+
+	mux := http.NewServeMux()
 
 	mux.HandleFunc("/monitor", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -478,65 +520,18 @@ func main() {
 		http.ServeFile(w, r, filepath.Join(segs.Dir(), name))
 	})
 
-	// 网页发送端从一台打开、同时连所有台：跨源请求必须放行。
-	// 局域网/tailnet 自用服务，没有共享凭据，通配符是安全的。
-	cors := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
-		mux.ServeHTTP(w, r)
-	})
-
-	srv := &http.Server{Addr: *addr, Handler: cors}
-
-	_, port, err := net.SplitHostPort(*addr)
-	if err != nil {
-		log.Fatalln("解析监听地址:", err)
+	// 本机诊断页是可选的：默认不监听任何端口，要开就自己指定绑到哪。
+	// 它只给运维看波形和统计，从不参与信令，因此也不影响"接收端只出站"。
+	var monitorSrv *http.Server
+	if *monitor != "" {
+		monitorSrv = &http.Server{Addr: *monitor, Handler: mux}
+		go func() {
+			log.Printf("本机诊断页: http://%s/monitor", *monitor)
+			if err := monitorSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Println("诊断页已停止:", err)
+			}
+		}()
 	}
-	ips := localIPv4()
-
-	scheme := "http"
-	if !*plain {
-		// 浏览器只在安全上下文里给麦克风权限，所以除了 localhost，
-		// 发送端必须走 https —— 这不是可选项，是能不能用的前提。
-		hosts := append([]string{"localhost", "127.0.0.1"}, ips...)
-		if *certHosts != "" {
-			hosts = append(hosts, strings.Split(*certHosts, ",")...)
-		}
-		cert, err := tlscert.Ensure(*certDir, hosts)
-		if err != nil {
-			log.Fatalln("准备证书失败:", err)
-		}
-		srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{cert}}
-		scheme = "https"
-	}
-
-	go func() {
-		log.Printf("虚拟麦克风输出设备: %s", dev.Name)
-		log.Printf("发送端地址: %s://localhost:%s", scheme, port)
-		log.Printf("监控页面: %s://localhost:%s/monitor", scheme, port)
-		for _, ip := range ips {
-			log.Printf("发送端地址: %s://%s:%s", scheme, ip, port)
-			log.Printf("监控页面: %s://%s:%s/monitor", scheme, ip, port)
-		}
-		if scheme == "https" {
-			log.Println("自签证书：浏览器首次会警告，点「高级 → 继续前往」，之后会被记住")
-		}
-
-		var err error
-		if *plain {
-			err = srv.ListenAndServe()
-		} else {
-			err = srv.ListenAndServeTLS("", "")
-		}
-		if err != nil && err != http.ErrServerClosed {
-			log.Fatalln(err)
-		}
-	}()
 
 	// 每 10 秒报一次缓冲健康度，用来判断要不要调 -buffer。
 	go func() {
@@ -573,10 +568,16 @@ func main() {
 			if !ok {
 				// 这一秒一个样本都没来，等同于静音，否则页面会一直挂着上一次的读数。
 				st.setLevel(-120, g)
-				continue
+			} else {
+				st.setLevel(db, g)
 			}
-			st.setLevel(db, g)
-			if !*meter {
+			if returnLevel != nil {
+				// 回传的电平每秒都要取走，否则峰值会一直累加到下一次有人看。
+				if rdb, rok := returnLevel.takeDBFS(); rok && *meter {
+					log.Printf("回传 %6.1f dBFS %s", rdb, bar(rdb))
+				}
+			}
+			if !*meter || !ok {
 				continue
 			}
 			if useAGC {
@@ -591,7 +592,10 @@ func main() {
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
 	log.Println("退出")
-	_ = srv.Close()
+	stopHub()
+	if monitorSrv != nil {
+		_ = monitorSrv.Close()
+	}
 }
 
 // statusState 是 /api/status 里那几个"只有回调和定时器知道"的值。
@@ -753,26 +757,71 @@ func bar(db float64) string {
 	return strings.Repeat("█", n)
 }
 
-// localIPv4 列出本机对外可达的 IPv4，用来生成证书 SAN 和提示访问地址。
-func localIPv4() []string {
-	ifaces, err := net.Interfaces()
+// readToken 取接收端凭据。
+//
+// 命令行参数会出现在进程列表里，任何能跑 ps 的账号都能看见；
+// 生产部署应该用 -token-file，文件权限就是凭据的权限边界。
+func readToken(token, tokenFile string) (string, error) {
+	if token != "" && tokenFile != "" {
+		return "", errors.New("同时给了 -token 和 -token-file，只能选一个")
+	}
+	if token != "" {
+		return token, nil
+	}
+	if tokenFile == "" {
+		return "", errors.New("缺少接收端凭据：用 -token 或 -token-file")
+	}
+	raw, err := os.ReadFile(tokenFile)
 	if err != nil {
+		return "", fmt.Errorf("读取凭据文件 %s: %w", tokenFile, err)
+	}
+	secret := strings.TrimSpace(string(raw))
+	if secret == "" {
+		return "", fmt.Errorf("凭据文件 %s 是空的", tokenFile)
+	}
+	return secret, nil
+}
+
+// returnSource 描述回传的声音从哪来。
+type returnSource struct {
+	loopback bool
+	selector string
+}
+
+func (s returnSource) enabled() bool { return s.selector != "" }
+
+// resolveReturnSource 决定回传采集源。
+//
+// 两个都填是配置错误，不猜：一条只采目标应用的虚拟线，另一条会把整机系统声音
+// 一起送进会议 —— 语义差得太远，替用户选哪个都可能不对。
+func resolveReturnSource(device, loopback string) (returnSource, error) {
+	switch {
+	case device != "" && loopback != "":
+		return returnSource{}, errors.New("同时给了 -return-device 和 -return-loopback，只能选一个")
+	case device != "":
+		return returnSource{selector: device}, nil
+	case loopback != "":
+		return returnSource{loopback: true, selector: loopback}, nil
+	default:
+		return returnSource{}, nil
+	}
+}
+
+// checkNotFeedback 拦住"采自己正在写的那条线"。
+// 那不是回传，是把输出绕回输入，结果是啸叫。
+func (s returnSource) checkNotFeedback(playbackName string) error {
+	if !s.enabled() {
 		return nil
 	}
-	var ips []string
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
-			continue
-		}
-		addrs, err := iface.Addrs()
-		if err != nil {
-			continue
-		}
-		for _, a := range addrs {
-			if ipnet, ok := a.(*net.IPNet); ok && ipnet.IP.To4() != nil {
-				ips = append(ips, ipnet.IP.String())
-			}
-		}
+	// 采集侧和播放侧的名字本来就不同（CABLE Input / CABLE Output），
+	// 所以比的是规范化后的子串包含关系，任一侧命中就算撞上。
+	want := audiodevice.NormalizeName(s.selector)
+	target := audiodevice.NormalizeName(playbackName)
+	if want == "" || target == "" {
+		return nil
 	}
-	return ips
+	if strings.Contains(target, want) || strings.Contains(want, target) {
+		return fmt.Errorf("回传采集源 %q 和播放目标 %q 是同一个设备：那是环，不是回传", s.selector, playbackName)
+	}
+	return nil
 }

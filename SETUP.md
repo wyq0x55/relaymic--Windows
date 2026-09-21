@@ -2,6 +2,13 @@
 
 > **English** · [中文](SETUP.zh-CN.md)
 
+> **Out of date for the network layer.** This document still describes the retired
+> LAN/Tailscale setup where the sending browser had to reach the receiver's port `7420`.
+> The receiver no longer listens on anything; both ends now dial out to a control plane
+> you deploy. Read [`docs/signaling.md`](docs/signaling.md) for the current path. The
+> audio-device half of this document (BlackHole / VB-CABLE, builds, troubleshooting) is
+> still accurate.
+
 > **Human reader**: hand this file, along with the repository, to your AI assistant (Claude Code,
 > Codex, Cursor, …) and tell it to install this. When it's done it will teach you how to use it.
 > You do not need to type any of the commands below yourself.

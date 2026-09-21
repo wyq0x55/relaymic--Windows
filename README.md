@@ -14,9 +14,16 @@ RelayMic fills that gap.
 The device in front of you (any browser)
   ↓  captures the mic → Opus 48 kHz stereo
   ↓  encrypted WebRTC (direct when possible, TURN relay when not)
-The remote Mac
+The remote machine
   ↓  decode → jitter buffer → write into a virtual audio device
 Zoom / dictation / Audacity / anything — reads it as an ordinary microphone
+
+…and back the other way, when you ask for it:
+
+The remote machine (Teams / Zoom speaker)
+  ↓  capture the virtual cable, or WASAPI-loopback a playback device
+  ↓  encode → Opus → the same WebRTC connection
+Your browser, on whatever headphones you already have
 ```
 
 It does **not** replace your remote desktop tool. It runs alongside TeamViewer, AnyDesk, Parsec,
@@ -54,10 +61,10 @@ Clone it, then tell your AI:
 `SETUP.md` is written for an AI to execute: every step has a verification, every failure has a
 troubleshooting entry.
 
-Doing it by hand works too — that document reads fine for humans. Roughly: put both machines on
-Tailscale → on the Mac, `brew install opus && brew install --cask blackhole-2ch` →
-`go build -tags nolibopusfile ./cmd/receiver` → run it → open
-`https://<mac's tailnet IP>:7420` in a browser on the other device.
+Doing it by hand works too. Roughly: deploy `relaymic-signaling` on any host with a TLS
+certificate and a public 443 → run `relaymic-receiver` on the machine with the virtual audio
+device and note the pairing code it prints → open `https://<your signalling host>` in a browser
+anywhere, type that code, allow the microphone.
 
 ## What this is, honestly
 
@@ -65,11 +72,12 @@ Tailscale → on the Mac, `brew install opus && brew install --cask blackhole-2c
 
 - Command line, no GUI, no installer
 - UI strings and logs are currently in Chinese
-- **You need to set up a network first.** There is no public signalling server in this version,
-  so the sending browser must reach the Mac's port `7420` directly. In practice that means
-  **Tailscale** (free — both ends get a stable `100.x.x.x`, port 7420 is directly reachable, and
-  WebRTC connects inside that virtual network). Consumer broadband in many countries sits behind
-  carrier-grade NAT with no public IP at all, where port forwarding and DDNS cannot help
+- **You need to run a signalling host.** The receiving machine no longer listens on anything:
+  both ends dial out to one HTTPS/WSS 443 entry point that you deploy yourself
+  ([`docs/signaling.md`](docs/signaling.md)), so NAT, a corporate firewall or carrier-grade NAT
+  no longer matter, and no VPN is involved. Audio never passes through it — the two ends connect
+  directly. **TURN relay for hostile NATs is not built yet** (#3): two symmetric NATs will
+  currently fail to connect, and the page says so
 - The input device on the Mac shows up as `BlackHole 2ch`, not "RelayMic"
 
 But **the audio path itself has been in daily use** — three Macs, every day. The parameters below
@@ -104,8 +112,10 @@ source: "we don't store it" is worth less than being able to check.
 ## Layout
 
 ```
-cmd/receiver     Mac receiver: takes the stream, decodes, writes to the virtual device,
-                 and serves the web sender
+cmd/receiver     Receiver: dials the control plane, takes the stream, decodes, writes to the
+                 virtual device. Listens on nothing unless you pass -monitor
+cmd/signaling    public control plane: one HTTPS/WSS 443 entry, pairing codes, SDP relay.
+                 Deploy this on any host with a TLS certificate
 cmd/sender       command-line sender
 cmd/sender-gui   Windows GUI sender (frozen — the web sender covers it)
 cmd/probe, selfcheck, stuncheck, turncheck   diagnostics
@@ -134,6 +144,12 @@ Each of these was considered and rejected; writing them down saves the discussio
 brew install opus
 go build -tags nolibopusfile ./...
 go test  -tags nolibopusfile ./internal/...
+```
+
+The control plane needs no CGO, so on a plain Linux server it is just:
+
+```bash
+go build -o relaymic-signaling ./cmd/signaling
 ```
 
 `-tags nolibopusfile` is required — the project only uses the codec, never reads `.opus` files,

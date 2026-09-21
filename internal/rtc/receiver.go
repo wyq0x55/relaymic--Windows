@@ -34,6 +34,7 @@ type Receiver struct {
 	onPCM   func([]int16)
 	onState func(webrtc.PeerConnectionState)
 	onPath  func(string)
+	onNotice func(string)
 
 	stats RTPStats
 
@@ -45,6 +46,8 @@ type Receiver struct {
 
 	mu sync.Mutex
 	pc *webrtc.PeerConnection
+
+	downlink *Downlink
 }
 
 // New 创建接收器。onPCM 会被解码协程反复调用，传入 48kHz 交错立体声 PCM。
@@ -274,6 +277,21 @@ func (r *Receiver) Stats() *RTPStats { return &r.stats }
 // 可能是一个 VPN 的虚拟网卡地址，那条路实际上还绕了半个地球。
 func (r *Receiver) OnPath(fn func(string)) { r.onPath = fn }
 
+// OnNotice 接收非致命的协商说明，用来写日志。
+//
+// 回传挂不上不该把上行也一起谈崩 —— 上行是已经能用的那条路，
+// 所以这类情况走通知而不是返回错误。
+func (r *Receiver) OnNotice(fn func(string)) { r.onNotice = fn }
+
+func (r *Receiver) notice(msg string) {
+	if r.onNotice != nil {
+		r.onNotice(msg)
+	}
+}
+
+// SetDownlink 打开回传：answer 里会挂上一条只发不收的音轨。
+func (r *Receiver) SetDownlink(d *Downlink) { r.downlink = d }
+
 // describePath 从 ICE 统计里还原出被选中的那条链路。
 func describePath(pc *webrtc.PeerConnection) string {
 	stats := pc.GetStats()
@@ -323,6 +341,17 @@ func (r *Receiver) Answer(offer webrtc.SessionDescription) (*webrtc.SessionDescr
 		return nil, fmt.Errorf("添加音频接收通道: %w", err)
 	}
 
+	// 对端声明了要收音频时，回传通道必须由我们自己建：pion 为远端 m-line
+	// 自动建出来的收发器挂不上音轨（见 offerWantsAudioFromUs 的说明）。
+	// 按顺序追加，正好对上 offer 里第二条音频 m-line。
+	wantsReturn := offerHasReceiveOnlyAudio(offer.SDP)
+	if wantsReturn && r.downlink != nil {
+		if _, err := pc.AddTransceiverFromTrack(r.downlink.Track(),
+			webrtc.RTPTransceiverInit{Direction: webrtc.RTPTransceiverDirectionSendonly}); err != nil {
+			r.notice("回传通道建立失败，本次只上行：" + err.Error())
+		}
+	}
+
 	pc.OnTrack(func(track *webrtc.TrackRemote, receiver *webrtc.RTPReceiver) {
 		// RTCP 必须持续读走，否则 NACK / 接收报告会被静默丢弃。
 		go func() {
@@ -355,6 +384,21 @@ func (r *Receiver) Answer(offer webrtc.SessionDescription) (*webrtc.SessionDescr
 	if err := pc.SetRemoteDescription(offer); err != nil {
 		pc.Close()
 		return nil, fmt.Errorf("设置远端描述: %w", err)
+	}
+
+	switch {
+	case r.downlink != nil && !wantsReturn:
+		// 配了回传但页面还是旧版（只推流）。上行照常，只是这次听不到对面。
+		r.notice("发送端没有声明接收通道，本次只上行（刷新页面后再试）")
+	case r.downlink == nil && wantsReturn:
+		// 对端想收、我们没开回传：把那条 m-line 明确标成 inactive。
+		// 让 pion 照默认答 sendonly 的话，页面会一直等一个永远不来的音轨。
+		for _, t := range pc.GetTransceivers() {
+			if t.Kind() == webrtc.RTPCodecTypeAudio &&
+				t.Direction() == webrtc.RTPTransceiverDirectionSendonly {
+				_ = t.Stop()
+			}
+		}
 	}
 
 	answer, err := pc.CreateAnswer(nil)

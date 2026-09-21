@@ -28,10 +28,24 @@
   }
   main { width: 100%; max-width: 380px; }
   h1 { font-size: 17px; font-weight: 600; margin: 0 0 4px; }
-  .target { color: var(--dim); font-size: 13px; margin-bottom: 28px; }
+  .target { color: var(--dim); font-size: 13px; margin-bottom: 24px; }
+
+  .code { display: flex; gap: 8px; margin-bottom: 12px; }
+  .code input {
+    flex: 1;
+    min-width: 0;
+    padding: 14px;
+    font: 600 22px/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: .26em;
+    text-align: center;
+    color: var(--fg);
+    background: #171a21;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  .code input:focus { outline: none; border-color: var(--dim); }
 
   button {
-    width: 100%;
     padding: 16px;
     font-size: 16px;
     font-weight: 600;
@@ -41,9 +55,11 @@
     border: 0;
     border-radius: 10px;
     cursor: pointer;
+    width: 100%;
   }
   button:disabled { opacity: .4; cursor: default; }
   button.live { background: var(--err); color: #fff; }
+  .code button { width: auto; padding: 14px 18px; font-size: 15px; }
 
   .meter {
     height: 4px;
@@ -52,19 +68,9 @@
     border-radius: 2px;
     overflow: hidden;
   }
-  .meter i {
-    display: block;
-    height: 100%;
-    width: 0;
-    background: var(--ok);
-    transition: width .08s linear;
-  }
+  .meter i { display: block; height: 100%; width: 0; background: var(--ok); transition: width .08s linear; }
 
-  .profiles {
-    display: flex;
-    gap: 6px;
-    margin-bottom: 12px;
-  }
+  .profiles { display: flex; gap: 6px; margin-bottom: 12px; }
   .profiles button {
     flex: 1;
     padding: 8px 4px;
@@ -75,13 +81,12 @@
     color: var(--dim);
     cursor: pointer;
   }
-  .profiles button.on {
-    color: inherit;
-    border-color: currentColor;
-    font-weight: 600;
-  }
+  .profiles button.on { color: inherit; border-color: currentColor; font-weight: 600; }
 
   .micstate { font-size: 13px; color: var(--dim); min-height: 18px; margin-bottom: 8px; }
+  .return { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--dim); margin-bottom: 8px; }
+  .return input { flex: 1; min-width: 0; accent-color: var(--fg); }
+  .return .ok { color: var(--ok); }
   .conns {
     font-size: 13px;
     border-top: 1px solid var(--line);
@@ -94,14 +99,8 @@
   .conn .host { font-variant-numeric: tabular-nums; }
   .conn .st { flex: 1; text-align: right; }
   .conn .rtt { color: var(--dim); font-variant-numeric: tabular-nums; min-width: 52px; text-align: right; }
-  .empty { color: var(--dim); }
   .ok { color: var(--ok); } .warn { color: var(--warn); } .err { color: var(--err); }
-  .src {
-    margin-top: 28px;
-    text-align: center;
-    font-size: 12px;
-    opacity: .45;
-  }
+  .src { margin-top: 28px; text-align: center; font-size: 12px; opacity: .45; }
   .src a { color: inherit; }
 </style>
 </head>
@@ -110,13 +109,33 @@
   <h1>远程麦克风</h1>
   <div class="target" id="target">—</div>
 
+  <div class="code">
+    <input id="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7"
+           placeholder="配对码" aria-label="配对码">
+    <button id="pair">连接</button>
+  </div>
+
   <div class="profiles" id="profiles"></div>
 
-  <button id="toggle">开始说话</button>
+  <button id="toggle" disabled>开始说话</button>
   <div class="meter"><i id="level"></i></div>
 
   <div id="micstate" class="micstate"></div>
-  <div id="conns" class="conns"><div class="empty">未连接</div></div>
+  <div class="return">
+    <span id="returnstate">回传：未开始</span>
+    <input id="volume" type="range" min="0" max="100" value="100" aria-label="对面音量">
+  </div>
+  <!-- 公司电脑上 Teams 的声音从这条音轨回来。它不依赖"开始说话"：
+       只听不说是正常用法。 -->
+  <audio id="remote" autoplay></audio>
+
+  <div class="conns">
+    <div class="conn">
+      <span class="host" id="peer">未配对</span>
+      <span class="st" id="state">—</span>
+      <span class="rtt" id="rtt"></span>
+    </div>
+  </div>
 
   <!-- AGPL-3.0 第 13 条：通过网络与本程序交互的用户，必须能拿到对应版本的源码。
        发送端就是这个网页，所以链接放在这儿，不是可选的装饰。
@@ -128,278 +147,266 @@
 
 <script>
 const $ = id => document.getElementById(id);
-let stream = null, statsTimer = null, rafId = null, audioCtx = null;
-let live = false, discoverTimer = null;
 
-// 每个接收端一条独立连接：各自协商、各自重连，一台挂了不影响其他台。
-// conns: origin 串 -> { target, pc, retry, retryTimer, healTimer, state, cls, rtt, needCert }
-const conns = new Map();
+// 控制面把 ICE 配置放在 /api/ice 上。TURN 在 #3 接进来之后会从这里一起下发，
+// 页面不需要知道候选是怎么来的。
+let iceServers = [{ urls: 'stun:stun.miwifi.com:3478' }];
 
-$('target').textContent = '自动发现接收端（从 ' + location.host + ' 进入）';
+let ws = null, pc = null, session = null, peerName = '';
+let stream = null, live = false, statsTimer = null, rafId = null, audioCtx = null;
+let paired = false;
+const remoteAudio = $('remote');
 
-$('toggle').onclick = () => (live ? stop() : start());
+$('target').textContent = location.host;
 
-// 音质模式：一键整组切换，不再一个参数一个参数地调。
-// 三档覆盖了排查中真实出现过的三种病：降噪的水泡音、底噪、增益不当。
+fetch('/api/ice')
+  .then(res => (res.ok ? res.json() : null))
+  .then(cfg => {
+    if (cfg && Array.isArray(cfg.iceServers) && cfg.iceServers.length) iceServers = cfg.iceServers;
+  })
+  .catch(() => { /* 拿不到就用兜底 STUN */ });
+
+// 配对码是 6 位数字；输入时按 3+3 分组，方便照着念。
+$('code').addEventListener('input', () => {
+  const digits = $('code').value.replace(/[^0-9]/g, '').slice(0, 6);
+  $('code').value = digits.length > 3 ? digits.slice(0, 3) + ' ' + digits.slice(3) : digits;
+});
+
+$('pair').onclick = () => (paired ? disconnect('已断开') : pair());
+$('toggle').onclick = () => (live ? stopMic() : startMic());
+$('volume').oninput = () => { remoteAudio.volume = $('volume').value / 100; };
+
+// 音质模式：一键整组切换。三档覆盖了排查中真实出现过的三种病：
+// 降噪的水泡音、底噪、增益不当。
 const PROFILES = {
-  denoise: { label: '降噪', ns: true,  agc: true  }, // 环境吵、麦克风电平正常
-  clean:   { label: '纯净', ns: false, agc: true  }, // 降噪出水泡音时用
-  raw:     { label: '原始', ns: false, agc: false }, // 全交给接收端 AGC 处理
+  denoise: { label: '降噪', ns: true,  agc: true  },
+  clean:   { label: '纯净', ns: false, agc: true  },
+  raw:     { label: '原始', ns: false, agc: false },
 };
 let profile = localStorage.getItem('profile');
-// 兼容旧的 ?ns=0 用法
-if (!PROFILES[profile]) profile = new URLSearchParams(location.search).get('ns') === '0' ? 'clean' : 'denoise';
+if (!PROFILES[profile]) profile = 'denoise';
 
-for (const [key, p] of Object.entries(PROFILES)) {
+for (const key of Object.keys(PROFILES)) {
   const b = document.createElement('button');
-  b.textContent = p.label;
+  b.textContent = PROFILES[key].label;
+  b.onclick = () => { profile = key; localStorage.setItem('profile', key); renderProfiles(); };
   b.dataset.key = key;
-  b.onclick = () => switchProfile(key);
   $('profiles').appendChild(b);
 }
-renderProfiles();
 
 function renderProfiles() {
   for (const b of $('profiles').children) b.classList.toggle('on', b.dataset.key === profile);
 }
+renderProfiles();
 
-// 正在说话时切换：重新拿一路新约束的音轨，replaceTrack 无缝换上，
-// 连接不动、不用重新协商。没在说话就只记下选择，下次开播生效。
-async function switchProfile(key) {
-  if (key === profile) return;
-  profile = key;
-  localStorage.setItem('profile', key);
-  renderProfiles();
-  if (!live) return;
-  try {
-    const next = await getMic();
-    if (!live) { next.getTracks().forEach(t => t.stop()); return; }
-    const old = stream;
-    stream = next;
-    attachMic();
-    cancelAnimationFrame(rafId); rafId = null;
-    if (audioCtx) { audioCtx.close(); audioCtx = null; }
-    meter(stream);
-    if (old) old.getTracks().forEach(t => t.stop());
-  } catch (err) {
-    $('micstate').textContent = explainMicError(err);
+function setState(text, cls) {
+  $('state').textContent = text;
+  $('state').className = 'st ' + (cls || '');
+}
+
+function pair() {
+  const code = $('code').value.replace(/[^0-9]/g, '');
+  if (code.length !== 6) { setState('配对码是 6 位数字', 'err'); return; }
+  teardownPeer();
+  paired = false;
+  $('pair').disabled = true;
+  $('peer').textContent = '配对中…';
+  setState('连接控制面…', 'warn');
+
+  const scheme = location.protocol === 'https:' ? 'wss://' : 'ws://';
+  ws = new WebSocket(scheme + location.host + '/ws/sender');
+  ws.onopen = () => ws.send(JSON.stringify({ type: 'pair', code }));
+  ws.onmessage = ev => handle(JSON.parse(ev.data));
+  ws.onerror = () => setState('控制面连接失败', 'err');
+  ws.onclose = () => {
+    $('pair').disabled = false;
+    if (paired) {
+      // 会话随连接一起结束：接收端那边已经换成了新码。
+      disconnect('会话已结束，请让接收端提供新的配对码');
+    } else if ($('state').className.indexOf('err') < 0) {
+      setState('控制面连接已关闭', 'err');
+    }
+  };
+}
+
+function handle(msg) {
+  switch (msg.type) {
+    case 'paired':
+      session = msg.session;
+      peerName = msg.name || '接收端';
+      paired = true;
+      $('peer').textContent = peerName;
+      $('pair').disabled = false;
+      $('pair').textContent = '断开';
+      negotiate();
+      break;
+    case 'answer':
+      if (!pc) return;
+      pc.setRemoteDescription(msg.sdp)
+        .then(() => { if (!statsTimer) statsTimer = setInterval(poll, 1000); })
+        .catch(err => setState('协商失败：' + err.message, 'err'));
+      break;
+    case 'error':
+      setState(msg.error || '配对失败', 'err');
+      break;
+    case 'closed':
+      disconnect(msg.error || '接收端已离线');
+      break;
   }
 }
 
-// getMic 按当前模式拿麦克风。
-// 增益交给接收端统一处理，这头只要原始一点的信号。
-// 回声消除恒关：远端的声音不会绕回本地，开着只是白白增加延迟。
-function getMic() {
-  const p = PROFILES[profile];
-  return withTimeout(
-    navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: false,
-        noiseSuppression: p.ns,
-        autoGainControl: p.agc,
-      },
-    }),
-    20000,
-    '麦克风一直没有响应');
+async function negotiate() {
+  setState('协商中…', 'warn');
+  pc = new RTCPeerConnection({ iceServers });
+
+  // 两条音频通道，顺序不能换：接收端按 m-line 顺序对通道，
+  // 第一条必须是"我们推麦克风"，第二条才是"我们听对面"。
+  // 第一条先占住只发不收的音轨，ICE 收集立刻开始，麦克风到手后再补真实音轨。
+  const tx = pc.addTransceiver('audio', { direction: 'sendonly' });
+  if (stream) tx.sender.replaceTrack(stream.getAudioTracks()[0]);
+  pc.addTransceiver('audio', { direction: 'recvonly' });
+
+  // 对面推过来的那条音轨，就是公司电脑上 Teams 的声音。
+  pc.ontrack = ev => {
+    if (ev.track.kind !== 'audio') return;
+    remoteAudio.srcObject = ev.streams[0] || new MediaStream([ev.track]);
+    remoteAudio.volume = $('volume').value / 100;
+    $('returnstate').textContent = '回传：已连接';
+    $('returnstate').className = 'ok';
+    // 自动播放要用户手势。进到这个页面时已经点过"连接"，通常直接就能响；
+    // 被拦下时把话说清楚，别让用户以为对面没声音。
+    remoteAudio.play().catch(() => {
+      $('returnstate').textContent = '回传：点一下页面开始播放';
+    });
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    const s = pc && pc.iceConnectionState;
+    if (s === 'connected' || s === 'completed') { setState('已连接', 'ok'); $('toggle').disabled = false; }
+    else if (s === 'checking') setState('打洞中…', 'warn');
+    else if (s === 'disconnected') setState('网络波动…', 'warn');
+    else if (s === 'failed') setState('媒体连接失败：双方都在 NAT 后时需要 TURN（#3）', 'err');
+  };
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  // 等候选收集，但最多 3 秒：STUN 不通时别陪浏览器等满 10 秒。
+  await new Promise(done => {
+    if (pc.iceGatheringState === 'complete') return done();
+    const cap = setTimeout(done, 3000);
+    pc.onicegatheringstatechange = () => {
+      if (pc.iceGatheringState === 'complete') { clearTimeout(cap); done(); }
+    };
+  });
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription }));
+  }
 }
 
-async function start() {
+async function startMic() {
+  $('micstate').textContent = '正在申请麦克风…';
+  try {
+    const want = PROFILES[profile];
+    stream = await withTimeout(
+      navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: want.ns,
+          noiseSuppression: want.ns,
+          autoGainControl: want.agc,
+          channelCount: 1,
+        },
+      }),
+      20000,
+      '麦克风授权超时',
+    );
+  } catch (err) {
+    $('micstate').textContent = explainMicError(err);
+    return;
+  }
+
   live = true;
   $('toggle').textContent = '停止';
   $('toggle').classList.add('live');
-
-  // 麦克风授权和网络协商互不依赖，串行等于把两段耗时相加。
-  // 先把发现和连接跑起来（音轨后补），同时去要麦克风。
-  discover();
-  discoverTimer = setInterval(discover, 30000);
-
-  try {
-    // 迟迟拿不到，多半是权限提示还等在地址栏那儿，或者麦克风被别的程序占着。
-    // 卡在这里却不给原因，用户只会以为产品坏了。
-    const hint = setTimeout(() => {
-      $('micstate').textContent = '等待麦克风授权：看一下地址栏左侧的权限提示';
-    }, 2500);
-
-    stream = await getMic();
-    clearTimeout(hint);
-    $('micstate').textContent = '';
-  } catch (err) {
-    $('micstate').textContent = explainMicError(err);
-    stop();
-    return;
-  }
+  $('micstate').textContent = '正在采集这台设备的声音';
   meter(stream);
   attachMic();
 }
 
-// discover 找到所有接收端：进入页面的这台 + 它替我们扫出来的其他台。
-// 浏览器自己够不到 Tailscale 设备表，这一步由接收端代劳（/api/receivers）。
-async function discover() {
-  if (!live) return;
-  ensureConn(location.origin);
-  try {
-    const res = await fetch('/api/receivers');
-    if (res.ok) {
-      for (const t of await res.json()) ensureConn(t);
-    }
-  } catch { /* 拿不到列表就只连本台 */ }
-}
-
-function ensureConn(target) {
-  const key = hostOf(target);
-  for (const c of conns.values()) if (hostOf(c.target) === key) return;
-  const c = { target, retry: 0, state: '连接中…', cls: 'warn', rtt: '' };
-  conns.set(target, c);
-  renderConns();
-  connectOne(c);
-}
-
-function hostOf(target) {
-  try { return new URL(target).hostname; } catch { return target; }
-}
-
-// attachMic 把麦克风音轨塞进所有已建好的连接。replaceTrack 不触发重新
-// 协商，所以连接可以先行建立，音轨到了直接开始推流。
-function attachMic() {
-  if (!stream) return;
-  for (const c of conns.values()) {
-    if (!c.pc) continue;
-    const sender = c.pc.getSenders().find(s => !s.track || s.track.kind === 'audio');
-    if (sender) sender.replaceTrack(stream.getAudioTracks()[0]);
-  }
-}
-
-// 每台接收端有自己的 /ice-config（同一套 TURN），跨域取。
-async function loadICE(target) {
-  try {
-    const res = await fetch(target + '/ice-config');
-    if (res.ok) return await res.json();
-  } catch { /* 兜底 */ }
-  return { iceServers: [{ urls: 'stun:stun.miwifi.com:3478' }] };
-}
-
-// connectOne 维持到一台接收端的连接。断了就退避重连 —— 网络恢复、
-// 接收端重启、电脑睡醒，都走这一条路径，不需要人再点一次按钮。
-async function connectOne(c) {
-  if (!live) return;
-  clearTimeout(c.retryTimer); c.retryTimer = null;
-  if (c.pc) { c.pc.close(); c.pc = null; }
-
-  try {
-    setConnState(c, '建立连接…', 'warn');
-    const cfg = await loadICE(c.target);
-    if (cfg.name) { c.name = cfg.name; }
-    const pc = new RTCPeerConnection({ iceServers: cfg.iceServers });
-    c.pc = pc;
-    // 先声明一条只发的音轨占住 m-line，ICE 收集立即开始；
-    // 麦克风到手后由 attachMic 补上真实音轨。重连时麦克风已在手，直接塞。
-    const tx = pc.addTransceiver('audio', { direction: 'sendonly' });
-    if (stream) tx.sender.replaceTrack(stream.getAudioTracks()[0]);
-    pc.oniceconnectionstatechange = () => {
-      if (c.pc !== pc) return;
-      const s = pc.iceConnectionState;
-      if (s === 'connected' || s === 'completed') {
-        clearTimeout(c.healTimer); c.healTimer = null;
-        c.retry = 0;
-        c.needCert = false;
-        setConnState(c, '已连接', 'ok');
-      } else if (s === 'checking') {
-        setConnState(c, '连接中…', 'warn');
-      } else if (s === 'disconnected') {
-        // disconnected 只是"暂时收不到对方的包"，ICE 自己会重试并且多半能恢复。
-        setConnState(c, '网络波动，等待恢复…', 'warn');
-        if (!c.healTimer) {
-          c.healTimer = setTimeout(() => {
-            c.healTimer = null;
-            const now = c.pc && c.pc.iceConnectionState;
-            if (now !== 'connected' && now !== 'completed') scheduleRetry(c, '长时间未恢复');
-          }, 8000);
-        }
-      } else if (s === 'failed' || s === 'closed') {
-        clearTimeout(c.healTimer); c.healTimer = null;
-        scheduleRetry(c, s === 'failed' ? '连接失败' : '连接关闭');
-      }
-    };
-
-    const offer = await pc.createOffer();
-    await pc.setLocalDescription(offer);
-    // 等候选收集，但最多等 3 秒：STUN 不通时别陪浏览器等满 10 秒。
-    await new Promise(done => {
-      if (pc.iceGatheringState === 'complete') return done();
-      const cap = setTimeout(done, 3000);
-      pc.onicegatheringstatechange = () => {
-        if (pc.iceGatheringState === 'complete') { clearTimeout(cap); done(); }
-      };
-    });
-
-    setConnState(c, '协商中…', 'warn');
-    const res = await fetch(c.target + '/offer', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(pc.localDescription),
-    });
-    if (!res.ok) throw new Error(await res.text());
-    await pc.setRemoteDescription(await res.json());
-
-    if (!statsTimer) statsTimer = setInterval(poll, 1000);
-  } catch (err) {
-    // 跨域 fetch 直接炸（TypeError）而目标不是本台：八成是那台的
-    // 自签证书还没被这个浏览器接受过 —— 提示点开一次，重连会自己接上。
-    if (err instanceof TypeError && hostOf(c.target) !== location.hostname) {
-      c.needCert = true;
-    }
-    scheduleRetry(c, err.message);
-  }
-}
-
-function scheduleRetry(c, why) {
-  if (!live || c.retryTimer) return;
-  const delay = Math.min(1000 * 2 ** c.retry, 15000);
-  c.retry++;
-  setConnState(c, `${why}，${Math.round(delay / 1000)}s 后重连`, 'warn');
-  c.retryTimer = setTimeout(() => { c.retryTimer = null; connectOne(c); }, delay);
-}
-
-function stop() {
+function stopMic() {
   live = false;
-  clearInterval(discoverTimer); discoverTimer = null;
-  clearInterval(statsTimer); statsTimer = null;
   cancelAnimationFrame(rafId); rafId = null;
   if (audioCtx) { audioCtx.close(); audioCtx = null; }
-  for (const c of conns.values()) {
-    clearTimeout(c.retryTimer);
-    clearTimeout(c.healTimer);
-    if (c.pc) c.pc.close();
+  if (pc) {
+    const sender = pc.getSenders().find(s => s.track && s.track.kind === 'audio');
+    if (sender) sender.replaceTrack(null);
   }
-  conns.clear();
   if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
   $('toggle').textContent = '开始说话';
   $('toggle').classList.remove('live');
-  $('level').style.width = '0';
   $('micstate').textContent = '';
-  renderConns();
+  $('level').style.width = '0';
 }
 
-function setConnState(c, text, cls) {
-  c.state = text;
-  c.cls = cls || '';
-  renderConns();
+// attachMic 把麦克风音轨塞进已建好的连接。replaceTrack 不触发重新协商，
+// 所以可以先配对、后开麦。
+function attachMic() {
+  if (!stream || !pc) return;
+  const sender = pc.getSenders().find(s => !s.track || s.track.kind === 'audio');
+  if (sender) sender.replaceTrack(stream.getAudioTracks()[0]);
 }
 
-function renderConns() {
-  const box = $('conns');
-  if (conns.size === 0) {
-    box.innerHTML = '<div class="empty">未连接</div>';
-    return;
+function disconnect(reason) {
+  teardownPeer();
+  paired = false;
+  session = null;
+  $('pair').textContent = '连接';
+  $('pair').disabled = false;
+  $('peer').textContent = '未配对';
+  $('toggle').disabled = true;
+  setState(reason || '已断开', 'warn');
+}
+
+function teardownPeer() {
+  clearInterval(statsTimer); statsTimer = null;
+  if (pc) { pc.close(); pc = null; }
+  if (ws) {
+    const sock = ws;
+    ws = null;
+    sock.onclose = null;
+    try { sock.close(); } catch { /* 已经关了 */ }
   }
-  box.innerHTML = [...conns.values()].map(c => `
-    <div class="conn">
-      <span class="host">${c.name ? c.name + ' · ' : ''}${hostOf(c.target)}</span>
-      <span class="st ${c.cls}">${c.needCert
-        ? `无法访问 —— 首次需<a href="${c.target}" target="_blank">点此打开一次</a>接受证书`
-        : c.state}</span>
-      <span class="rtt">${c.rtt}</span>
-    </div>`).join('');
+  $('rtt').textContent = '';
+  remoteAudio.srcObject = null;
+  $('returnstate').textContent = '回传：未开始';
+  $('returnstate').className = '';
+}
+
+// 本地电平表：先确认自己这头真的在采到声音，再去怀疑网络。
+function meter(s) {
+  audioCtx = new AudioContext();
+  const analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 1024;
+  audioCtx.createMediaStreamSource(s).connect(analyser);
+  const buf = new Float32Array(analyser.fftSize);
+  (function tick() {
+    analyser.getFloatTimeDomainData(buf);
+    let sum = 0;
+    for (const v of buf) sum += v * v;
+    const rms = Math.sqrt(sum / buf.length);
+    $('level').style.width = Math.min(100, rms * 300) + '%';
+    rafId = requestAnimationFrame(tick);
+  })();
+}
+
+async function poll() {
+  if (!pc) return;
+  let stats;
+  try { stats = await pc.getStats(); } catch { return; }
+  stats.forEach(r => {
+    if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.currentRoundTripTime != null) {
+      $('rtt').textContent = Math.round(r.currentRoundTripTime * 1000) + ' ms';
+    }
+  });
 }
 
 function withTimeout(promise, ms, message) {
@@ -418,46 +425,6 @@ function explainMicError(err) {
   if (name === 'OverconstrainedError') return '麦克风不支持所需参数';
   return '拿不到麦克风：' + (err.message || name || '未知原因');
 }
-
-// 本地电平表：先确认自己这头真的在采到声音，再去怀疑网络。
-function meter(stream) {
-  audioCtx = new AudioContext();
-  const analyser = audioCtx.createAnalyser();
-  analyser.fftSize = 1024;
-  audioCtx.createMediaStreamSource(stream).connect(analyser);
-  const buf = new Float32Array(analyser.fftSize);
-  (function tick() {
-    analyser.getFloatTimeDomainData(buf);
-    let sum = 0;
-    for (const v of buf) sum += v * v;
-    const rms = Math.sqrt(sum / buf.length);
-    $('level').style.width = Math.min(100, rms * 300) + '%';
-    rafId = requestAnimationFrame(tick);
-  })();
-}
-
-// poll 每秒扫一遍所有连接的统计，把 RTT（和中继标记）写进各自的行。
-async function poll() {
-  let dirty = false;
-  for (const c of conns.values()) {
-    if (!c.pc || c.pc.connectionState === 'closed') continue;
-    const stats = await c.pc.getStats();
-    let pair = null;
-    stats.forEach(r => {
-      if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.nominated !== false) pair = r;
-    });
-    if (pair && pair.currentRoundTripTime != null) {
-      const local = stats.get(pair.localCandidateId);
-      const rem = stats.get(pair.remoteCandidateId);
-      const relayed = local?.candidateType === 'relay' || rem?.candidateType === 'relay';
-      const txt = Math.round(pair.currentRoundTripTime * 1000) + 'ms' + (relayed ? ' 中继' : '');
-      if (txt !== c.rtt) { c.rtt = txt; dirty = true; }
-    }
-  }
-  if (dirty) renderConns();
-}
-
-addEventListener('pagehide', stop);
 </script>
 </body>
 </html>
