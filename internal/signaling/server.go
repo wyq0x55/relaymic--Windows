@@ -241,12 +241,16 @@ func (s *Server) runReceiver(ctx context.Context, conn *websocket.Conn, receiver
 		if err := readMessage(ctx, conn, &msg); err != nil {
 			return
 		}
-		if msg.Type != TypeAnswer {
-			// 接收端只允许发 answer。多一条通道就多一个需要审计的转发路径。
+		switch msg.Type {
+		case TypeAnswer:
+			s.routeAnswer(rc, msg)
+		case TypeClose:
+			s.closeSession(rc, msg)
+		default:
+			// 接收端只允许发 answer 和 close。多一条通道就多一个需要审计的转发路径。
 			_ = conn.Close(websocket.StatusPolicyViolation, "unexpected message type")
 			return
 		}
-		s.routeAnswer(rc, msg)
 	}
 }
 
@@ -353,15 +357,43 @@ func (s *Server) routeAnswer(rc *receiverConn, msg Message) {
 	_ = sender.write(ctx, Message{Type: TypeAnswer, Session: sess.id, SDP: msg.SDP})
 }
 
+// closeSession 处理接收端主动结束会话：踢掉发送端，再按正常收尾补一个新码。
+func (s *Server) closeSession(rc *receiverConn, msg Message) {
+	s.mu.Lock()
+	sess := s.sessions[msg.Session]
+	if sess == nil || sess.receiver != rc {
+		// 不是自己这条会话：既不结束也不回应，免得变成探测别人会话的接口。
+		s.mu.Unlock()
+		return
+	}
+	sender := sess.sender
+	s.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.writeTime)
+	_ = sender.write(ctx, Message{Type: TypeClosed, Session: sess.id, Error: SessionClosedText})
+	cancel()
+
+	// 先补新码，再断发送端：Close 会等对端的关闭帧，顺序反了就会把接收端的
+	// 新配对码一起拖到超时之后（发送端这时正堵在 Read 上，不会回关闭帧）。
+	s.endSession(sess)
+	_ = sender.conn.CloseNow()
+}
+
 // endSession 收尾一条会话：通知接收端发送端走了，并给它一个新码。
 func (s *Server) endSession(sess *session) {
 	s.mu.Lock()
-	if s.sessions[sess.id] == sess {
+	wasLive := s.sessions[sess.id] == sess
+	if wasLive {
 		delete(s.sessions, sess.id)
 	}
 	current := s.receivers[sess.receiver.id]
 	s.mu.Unlock()
 
+	if !wasLive {
+		// 一条会话只收尾一次：接收端主动 close 之后，发送端那条连接还会走一遍
+		// 自己的 defer，这里再发一次码，接收端就会看到两个配对码。
+		return
+	}
 	if current != sess.receiver {
 		// 接收端已经换了一条连接，新连接自己会拿到码。
 		return

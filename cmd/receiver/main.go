@@ -16,6 +16,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -281,6 +282,7 @@ func main() {
 
 	st := &statusState{state: "未连接"}
 	pairing := monitor.NewPairingState()
+	sessions := monitor.NewSessionState()
 
 	receiver := rtc.New(
 		func(pcm []int16) {
@@ -430,6 +432,7 @@ func main() {
 			},
 			OnJoined: func(session string, sessionICE []signaling.ICEServer) {
 				pairing.Clear()
+				sessions.Set(session)
 				if len(sessionICE) > 0 {
 					servers := sessionICE
 					if turnTunnelAddr != "" {
@@ -442,6 +445,7 @@ func main() {
 			},
 			OnLeft: func(session string) {
 				pairing.Clear()
+				sessions.Clear(session)
 				log.Println("发送端已离开，控制面已换新配对码")
 			},
 			OnError: func(message string) {
@@ -480,20 +484,21 @@ func main() {
 		pairingView := pairing.Snapshot(time.Now(), monitor.IsLoopbackRemoteAddr(r.RemoteAddr))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"state":        state,
-			"path":         path,
-			"levelDb":      levelDB,
-			"gain":         gain,
-			"bufferedMs":   buffered * 1000 / (rtc.SampleRate * rtc.Channels),
-			"dropped":      dropped,
-			"starved":      starved,
-			"received":     received,
-			"lost":         lost,
-			"hub":          *hub,
-			"outputDevice": dev.Name,
-			"returnSource": returnSourceName,
-			"returnMode":   returnSourceMode,
-			"forceRelay":   *forceRelay,
+			"state":         state,
+			"path":          path,
+			"levelDb":       levelDB,
+			"gain":          gain,
+			"bufferedMs":    buffered * 1000 / (rtc.SampleRate * rtc.Channels),
+			"dropped":       dropped,
+			"starved":       starved,
+			"received":      received,
+			"lost":          lost,
+			"hub":           *hub,
+			"outputDevice":  dev.Name,
+			"returnSource":  returnSourceName,
+			"returnMode":    returnSourceMode,
+			"forceRelay":    *forceRelay,
+			"sessionActive": sessions.Get() != "",
 			"pairing": map[string]any{
 				"active":       pairingView.Active,
 				"code":         pairingView.Code,
@@ -501,6 +506,27 @@ func main() {
 				"expiresInSec": int(math.Ceil(pairingView.ExpiresIn.Seconds())),
 			},
 		})
+	})
+	// 本机写操作：只允许回环 + 自定义头。只绑回环挡不住 CSRF ——
+	// 浏览器里任何一个页面都能往 127.0.0.1 发 POST。
+	mux.HandleFunc("POST /api/session/close", func(w http.ResponseWriter, r *http.Request) {
+		if !localWriteAllowed(r) {
+			http.Error(w, "forbidden", http.StatusForbidden)
+			return
+		}
+		session := sessions.Get()
+		if session == "" {
+			http.Error(w, "没有进行中的通话", http.StatusConflict)
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+		if err := client.CloseSession(ctx, session); err != nil {
+			http.Error(w, err.Error(), http.StatusBadGateway)
+			return
+		}
+		log.Println("本机控制台结束了当前通话")
+		w.WriteHeader(http.StatusNoContent)
 	})
 	toJSON := func(r *audio.SegmentRecorder) []segmentJSON {
 		// 页面按数组渲染，没开分段录音时也得给个空数组而不是 null。
@@ -731,6 +757,29 @@ func hubICEServers(servers []signaling.ICEServer) []webrtc.ICEServer {
 		})
 	}
 	return out
+}
+
+// localWriteAllowed 判断一个本机写操作能不能放行。
+//
+// 只绑回环挡不住 CSRF：浏览器里任何一个页面都能往 127.0.0.1 发 POST。
+// 所以再要求一个自定义头（HTML 表单发不出来），并校验来源与 Host 一致。
+func localWriteAllowed(r *http.Request) bool {
+	if !monitor.IsLoopbackRemoteAddr(r.RemoteAddr) {
+		return false
+	}
+	if r.Header.Get("X-RelayMic") == "" {
+		return false
+	}
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+		return false
+	}
+	if origin := r.Header.Get("Origin"); origin != "" {
+		u, err := url.Parse(origin)
+		if err != nil || !strings.EqualFold(u.Host, r.Host) {
+			return false
+		}
+	}
+	return true
 }
 
 // tunnelICEServers 把 TURN 地址换成本机的隧道入口。

@@ -32,6 +32,8 @@ const (
 	TypeError = "error"
 	// Hub -> Sender：接收端离线，会话不可继续。
 	TypeClosed = "closed"
+	// Receiver -> Hub：接收端主动结束当前会话。
+	TypeClose = "close"
 )
 
 // 对外错误文案。
@@ -40,6 +42,8 @@ const (
 	PairingFailedText = "配对失败：码不对、已过期或已用过"
 	// ReceiverOfflineText 表示接收端已经断开。
 	ReceiverOfflineText = "接收端已离线"
+	// SessionClosedText 表示接收端主动结束了这次通话。
+	SessionClosedText = "接收端结束了这次通话"
 )
 
 // Message 是控制面上的唯一信封。

@@ -71,6 +71,9 @@ type Client struct {
 	dial         DialFunc
 
 	writeMu sync.Mutex
+
+	activeMu sync.Mutex
+	active   *websocket.Conn
 }
 
 // New 校验配置并构造客户端。
@@ -166,6 +169,8 @@ func (c *Client) session(ctx context.Context, h Handlers) error {
 		return err
 	}
 	defer conn.CloseNow()
+	c.trackActive(conn)
+	defer c.untrackActive(conn)
 	conn.SetReadLimit(signaling.MaxMessageBytes)
 
 	for {
@@ -245,4 +250,35 @@ func (c *Client) read(ctx context.Context, conn *websocket.Conn, out *signaling.
 		return errors.New("hubclient: 只接受文本消息")
 	}
 	return json.Unmarshal(data, out)
+}
+
+func (c *Client) trackActive(conn *websocket.Conn) {
+	c.activeMu.Lock()
+	c.active = conn
+	c.activeMu.Unlock()
+}
+
+func (c *Client) untrackActive(conn *websocket.Conn) {
+	c.activeMu.Lock()
+	if c.active == conn {
+		c.active = nil
+	}
+	c.activeMu.Unlock()
+}
+
+// CloseSession 让控制面结束这条会话，并立刻给本机发一个新配对码。
+//
+// 只在接收端本机的控制台上被调用：接收端要能主动踢掉当前发送端，而不是
+// 只能靠重启进程。Hub 侧会校验这条会话确实属于本接收端。
+func (c *Client) CloseSession(ctx context.Context, session string) error {
+	if session == "" {
+		return errors.New("hubclient: 缺少会话标识")
+	}
+	c.activeMu.Lock()
+	conn := c.active
+	c.activeMu.Unlock()
+	if conn == nil {
+		return errors.New("hubclient: 当前没有连上控制面")
+	}
+	return c.write(ctx, conn, signaling.Message{Type: signaling.TypeClose, Session: session})
 }

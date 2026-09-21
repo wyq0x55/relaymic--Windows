@@ -58,6 +58,7 @@ RelayMic 原来的模型是"发送端必须能直接访问接收端的 `:7420`"�
 | 发送端 → Hub | `pair` | 用配对码认领接收端 |
 | 发送端 → Hub → 接收端 | `offer` | 完整 SDP offer，原样搬运 |
 | 接收端 → Hub → 发送端 | `answer` | 完整 SDP answer，原样搬运 |
+| 接收端 → Hub | `close` | 接收端主动结束当前会话；Hub 踢掉发送端并立刻补发新配对码 |
 
 SDP 是 `json.RawMessage`：控制面不解析、不改写、不缓存，因此不需要跟着 WebRTC
 版本升级改代码。单条消息上限 64 KiB，超出直接断开。
@@ -228,4 +229,3 @@ Hub 可以开一个隧道端点，让 Receiver 把 TURN/TCP 塞进它已经能�
 - coturn 要在本机监听 TCP（默认 `listening-port=3478` 同时听 UDP 和 TCP），
   且 `listening-ip` 要包含 `127.0.0.1`，否则隧道连不上。
 - 没配 `tunnelTarget` 时端点返回 404；Receiver 不带 `-turn-tunnel` 时行为与之前完全一致。
-

@@ -104,6 +104,7 @@
       <span>收包 <b id="received">—</b></span>
       <span>丢包 <b id="lost">—</b></span>
     </div>
+    <button id="closeSession" type="button" disabled>断开当前通话</button>
   </div>
 
   <div class="card">
@@ -161,6 +162,7 @@ function renderStatus(s) {
   $('outputDevice').textContent = s.outputDevice || '—';
   $('returnSource').textContent = s.returnSource ? `${s.returnMode || '回传'}：${s.returnSource}` : '未配置';
   $('relayMode').textContent = s.forceRelay ? '强制 TURN 中继' : '自动（直连优先）';
+  $('closeSession').disabled = !s.sessionActive;
 }
 
 function renderPairing(pairing) {
@@ -193,6 +195,17 @@ $('copyCode').onclick = async () => {
   }
 };
 
+// 断开是写操作：带上自定义头，服务端据此拒绝浏览器里其他页面发起的 POST。
+$('closeSession').onclick = async () => {
+  $('closeSession').disabled = true;
+  try {
+    const res = await fetch('/api/session/close', { method: 'POST', headers: { 'X-RelayMic': '1' } });
+    $('codeHint').textContent = res.ok ? '已断开；新配对码马上到' : `断开失败：HTTP ${res.status}`;
+  } catch {
+    $('codeHint').textContent = '断开失败：本机控制台无响应';
+  }
+};
+
 function renderOffline() {
   $('state').textContent = '接收端离线';
   $('state').className = 'err';
@@ -201,6 +214,7 @@ function renderOffline() {
   $('buffered').textContent = $('dropped').textContent = $('starved').textContent =
     $('received').textContent = $('lost').textContent = '—';
   renderPairing({});
+  $('closeSession').disabled = true;
   $('hub').textContent = $('outputDevice').textContent = $('returnSource').textContent = $('relayMode').textContent = '—';
 }
 
