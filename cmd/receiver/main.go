@@ -20,11 +20,9 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -39,16 +37,6 @@ import (
 	"github.com/hueshu/relaymic/internal/web"
 	"github.com/pion/webrtc/v4"
 )
-
-func defaultDataDir() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ".relaymic"
-	}
-	return filepath.Join(home, ".config", "relaymic")
-}
-
-func defaultSegmentsDir() string { return filepath.Join(defaultDataDir(), "recordings") }
 
 func main() {
 	hub := flag.String("hub", "", "公网控制面地址，形如 wss://mic.example.com/ws/receiver")
@@ -77,7 +65,6 @@ func main() {
 	// 语音识别场景带宽根本不是瓶颈，没有理由为省包冒断字的险。
 	dtx := flag.Bool("dtx", false, "让发送端静音时停发包（省带宽，但可能掐掉轻声）")
 	record := flag.String("record", "", "把解码后、处理前的原始 PCM 录成 WAV，用于杂音诊断")
-	segmentsDir := flag.String("segments-dir", defaultSegmentsDir(), "按语音段切片存 WAV 的目录，供监控页回听；留空表示不录")
 	flag.Parse()
 
 	log.SetFlags(log.Ltime)
@@ -148,138 +135,6 @@ func main() {
 		log.Println("诊断录音:", *record)
 	}
 
-	// 分段录音在增益之后：现场要回答的是"刚才那句为什么没识别出来"，
-	// 要听的就是识别软件真正听到的那份音频，不是解码器吐出来的原始样本。
-	var segs *audio.SegmentRecorder
-	var segCh chan []int16
-	if *segmentsDir != "" {
-		var err error
-		if segs, err = audio.NewSegmentRecorder(*segmentsDir, rtc.SampleRate, rtc.Channels); err != nil {
-			log.Fatalln("打开分段录音目录失败:", err)
-		}
-		defer segs.Close()
-		log.Println("分段录音:", *segmentsDir)
-
-		// 落盘必须和音频链解耦：SegmentRecorder.Write 是同步磁盘写，
-		// 段边界还要建文件、扫目录。直接在解码协程里调，磁盘一卡
-		// 播放缓冲就被声卡抽干 —— 为了诊断功能把正事搞出欠载，本末倒置。
-		// 队列满就丢帧：录音缺一帧无所谓，音频链一毫秒都不能等。
-		segCh = make(chan []int16, 64)
-		go func() {
-			for pcm := range segCh {
-				segs.Write(pcm)
-			}
-		}()
-	}
-
-	// 最近一次往声卡写入有声样本的时刻，环回 watchdog 的因果依据。
-	var lastPlayVoiced atomic.Int64
-	lastPlayVoiced.Store(time.Now().Unix())
-
-	// 第二路：ring 之后（声卡实际拿到的数据）。和上面那路对比，
-	// 缓冲的欠载断口、拉伸、淡入淡出对音质的影响直接能听出来。
-	var postSegs *audio.SegmentRecorder
-	var postCh chan []int16
-	if *segmentsDir != "" {
-		var err error
-		if postSegs, err = audio.NewSegmentRecorder(filepath.Join(*segmentsDir, "post"), rtc.SampleRate, rtc.Channels); err != nil {
-			log.Fatalln("打开 ring 后录音目录失败:", err)
-		}
-		defer postSegs.Close()
-		postCh = make(chan []int16, 64)
-		go func() {
-			for pcm := range postCh {
-				postSegs.Write(pcm)
-			}
-		}()
-		player.SetTap(func(pcm []int16) {
-			for _, v := range pcm {
-				if v > 500 || v < -500 {
-					lastPlayVoiced.Store(time.Now().Unix())
-					break
-				}
-			}
-			frame := make([]int16, len(pcm))
-			copy(frame, pcm)
-			select {
-			case postCh <- frame:
-			default: // 落盘跟不上就丢帧，绝不拖累声卡回调
-			}
-		})
-	}
-
-	// 第三路：BlackHole 环回之后 —— 识别软件从设备里读到的就是这份。
-	// 这里破了"接收端从不打开输入设备"的例，但成不了环：读的是自己
-	// 写的 BlackHole，数据只进录音文件，永远不会流回播放缓冲。
-	var loopSegs *audio.SegmentRecorder
-	if *segmentsDir != "" {
-		var err error
-		if loopSegs, err = audio.NewSegmentRecorder(filepath.Join(*segmentsDir, "loop"), rtc.SampleRate, rtc.Channels); err != nil {
-			log.Fatalln("打开环回录音目录失败:", err)
-		}
-		defer loopSegs.Close()
-		loopCh := make(chan []int16, 64)
-		go func() {
-			for pcm := range loopCh {
-				loopSegs.Write(pcm)
-			}
-		}()
-		capDev, err := actx.FindCapture(*deviceName)
-		if err != nil {
-			log.Println("环回录音不可用（找不到输入侧设备）:", err)
-		} else {
-			// 进程快速重启时，CoreAudio 偶尔会发一个坏的 capture 流：
-			// 要么回调不来，要么回调照跑、内容却全零。所以判据不能看
-			// "有没有回调"，要看因果：我们明明往 BlackHole 写了有声数据
-			// （lastPlayVoiced 在 tap 里刷新），环回侧却 60 秒收不到一个
-			// 有声样本 —— 环回断了，重开。静音时段两个时间戳都不动，
-			// 不会误报。
-			var lastLoopVoiced atomic.Int64
-			lastLoopVoiced.Store(time.Now().Unix())
-			openLoop := func() *audio.Capturer {
-				c, err := actx.NewCapturer(capDev, rtc.SampleRate, rtc.Channels, func(pcm []int16) {
-					for _, v := range pcm {
-						if v > 500 || v < -500 {
-							lastLoopVoiced.Store(time.Now().Unix())
-							break
-						}
-					}
-					frame := make([]int16, len(pcm))
-					copy(frame, pcm)
-					select {
-					case loopCh <- frame:
-					default:
-					}
-				})
-				if err != nil {
-					log.Println("环回采集打开失败:", err)
-					return nil
-				}
-				log.Println("环回录音: 从", capDev.Name, "输入侧采集")
-				return c
-			}
-			loopCap := openLoop()
-			go func() {
-				for range time.Tick(15 * time.Second) {
-					now := time.Now().Unix()
-					// 没在写有声数据就没有判断依据，静静等着。
-					if now-lastPlayVoiced.Load() > 60 {
-						continue
-					}
-					if now-lastLoopVoiced.Load() < 60 {
-						continue
-					}
-					log.Println("环回采集失聪（播放有声而环回 60 秒无声），重开")
-					if loopCap != nil {
-						loopCap.Close()
-					}
-					lastLoopVoiced.Store(now) // 重开后重新计时，防连环重开
-					loopCap = openLoop()
-				}
-			}()
-		}
-	}
-
 	st := &statusState{state: "未连接"}
 	pairing := monitor.NewPairingState()
 	sessions := monitor.NewSessionState()
@@ -296,14 +151,6 @@ func main() {
 			}
 			level.observe(pcm)
 			player.Write(pcm)
-			if segCh != nil {
-				frame := make([]int16, len(pcm))
-				copy(frame, pcm)
-				select {
-				case segCh <- frame:
-				default: // 落盘跟不上就丢帧，绝不反压音频链
-				}
-			}
 		},
 		func(state webrtc.PeerConnectionState) {
 			log.Println("连接状态:", state)
@@ -528,69 +375,6 @@ func main() {
 		log.Println("本机控制台结束了当前通话")
 		w.WriteHeader(http.StatusNoContent)
 	})
-	toJSON := func(r *audio.SegmentRecorder) []segmentJSON {
-		// 页面按数组渲染，没开分段录音时也得给个空数组而不是 null。
-		out := []segmentJSON{}
-		if r == nil {
-			return out
-		}
-		for _, s := range r.List() {
-			out = append(out, segmentJSON{
-				Name:   s.Name,
-				Time:   s.Time,
-				DurMS:  s.DurMS,
-				PeakDB: s.PeakDB,
-			})
-		}
-		return out
-	}
-	mux.HandleFunc("/api/segments", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"pre":  toJSON(segs),
-			"post": toJSON(postSegs),
-			"loop": toJSON(loopSegs),
-		})
-	})
-	mux.HandleFunc("GET /api/segments/loop/{name}", func(w http.ResponseWriter, r *http.Request) {
-		if loopSegs == nil {
-			http.NotFound(w, r)
-			return
-		}
-		name := r.PathValue("name")
-		if !validSegmentName(name) {
-			http.NotFound(w, r)
-			return
-		}
-		http.ServeFile(w, r, filepath.Join(loopSegs.Dir(), name))
-	})
-	mux.HandleFunc("GET /api/segments/post/{name}", func(w http.ResponseWriter, r *http.Request) {
-		if postSegs == nil {
-			http.NotFound(w, r)
-			return
-		}
-		name := r.PathValue("name")
-		if !validSegmentName(name) {
-			http.NotFound(w, r)
-			return
-		}
-		http.ServeFile(w, r, filepath.Join(postSegs.Dir(), name))
-	})
-	mux.HandleFunc("GET /api/segments/{name}", func(w http.ResponseWriter, r *http.Request) {
-		if segs == nil {
-			http.NotFound(w, r)
-			return
-		}
-		name := r.PathValue("name")
-		// 只放行自己生成的那种文件名。不能只挡 ".."：这个目录在用户家目录下，
-		// 拼进任何一个带路径分隔符的名字都等于把整块盘开放给了局域网。
-		if !validSegmentName(name) {
-			http.NotFound(w, r)
-			return
-		}
-		http.ServeFile(w, r, filepath.Join(segs.Dir(), name))
-	})
-
 	// 本机诊断页是可选的：默认不监听任何端口，要开就自己指定绑到哪。
 	// 它只给运维看波形和统计，从不参与信令，因此也不影响"接收端只出站"。
 	var monitorSrv *http.Server
@@ -701,29 +485,6 @@ func (s *statusState) snapshot() (state, path string, levelDB, gain float64) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.state, s.path, s.levelDB, s.gain
-}
-
-// segmentJSON 是 audio.SegmentInfo 的传输形态，字段名对齐监控页。
-type segmentJSON struct {
-	Name   string    `json:"name"`
-	Time   time.Time `json:"time"`
-	DurMS  int       `json:"durMs"`
-	PeakDB float64   `json:"peakDb"`
-}
-
-// validSegmentName 只认分段录音自己生成的文件名："20060102-150405[-N].wav"。
-// 白名单而非黑名单：够用，而且不必去想还有哪几种写法能绕过。
-func validSegmentName(name string) bool {
-	base, ok := strings.CutSuffix(name, ".wav")
-	if !ok || base == "" {
-		return false
-	}
-	for _, c := range base {
-		if (c < '0' || c > '9') && c != '-' {
-			return false
-		}
-	}
-	return true
 }
 
 // iceServers 组装 STUN/TURN 列表。TURN 只在填了地址时加入。
