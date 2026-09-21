@@ -52,7 +52,7 @@ func main() {
 	hub := flag.String("hub", "", "公网控制面地址，形如 wss://mic.example.com/ws/receiver")
 	token := flag.String("token", "", "接收端凭据；也可以用 -token-file")
 	tokenFile := flag.String("token-file", "", "从文件读接收端凭据（取首行）")
-	monitor := flag.String("monitor", "", "本机诊断页监听地址，形如 127.0.0.1:7420；留空表示不监听任何端口")
+	monitorAddr := flag.String("monitor", "", "本机诊断页监听地址，形如 127.0.0.1:7420；留空表示不监听任何端口")
 	returnDevice := flag.String("return-device", "", "回传：采集这个录制设备（第二条虚拟线，例如 CABLE-A Output）")
 	returnLoopback := flag.String("return-loopback", "", "回传：环回采集这个播放设备（例如 ヘッドホン）；会带上该设备的全部系统声音")
 	deviceName := flag.String("device", receiverconfig.DefaultOutputDeviceForOS(runtime.GOOS), "输出设备名（子串匹配）；Windows 默认匹配 VB-CABLE")
@@ -410,7 +410,7 @@ func main() {
 				log.Printf("已连接 %s", *hub)
 				log.Printf("设备: %s", dev.Name)
 				pairing.Set(code, time.Now().Add(expiresIn))
-				if *monitor == "" {
+				if *monitorAddr == "" {
 					log.Printf("已生成一次性配对码（%d 分钟有效）；用 -monitor 127.0.0.1:7420 在本机查看", int(expiresIn.Minutes()))
 				}
 				st.setState("等待发送端")
@@ -551,10 +551,10 @@ func main() {
 	// 本机诊断页是可选的：默认不监听任何端口，要开就自己指定绑到哪。
 	// 它只给运维看波形和统计，从不参与信令，因此也不影响"接收端只出站"。
 	var monitorSrv *http.Server
-	if *monitor != "" {
-		monitorSrv = &http.Server{Addr: *monitor, Handler: mux}
+	if *monitorAddr != "" {
+		monitorSrv = &http.Server{Addr: *monitorAddr, Handler: mux}
 		go func() {
-			log.Printf("本机诊断页: http://%s/monitor", *monitor)
+			log.Printf("本机诊断页: http://%s/monitor", *monitorAddr)
 			if err := monitorSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Println("诊断页已停止:", err)
 			}

@@ -34,5 +34,6 @@ go vet ./internal/monitor ./internal/signaling ./internal/hubclient ./cmd/signal
 | 非回环访问被隐藏，已用或过期码为空 | `TestPairingStateShowsActiveCodeOnlyToLocalViewer`、`TestPairingStateClearsUsedAndExpiredCode` | PASS |
 | 仅 IPv4/IPv6 回环地址可取得配对码 | `TestIsLoopbackRemoteAddr` | PASS |
 
-覆盖率：`internal/monitor` 为 100.0%。当前机器缺少 Opus 的 `pkg-config` 开发环境，
-因此未在此轮重跑带 CGO 的 `cmd/receiver` 原生测试；纯 Go 控制面和新监控状态均已通过。
+Windows 原生验证使用 MSYS2 的 `mingw-w64-x86_64-opus`，并设置其 `pkgconfig` 与 `bin`
+目录后执行 `go test -race -cover -tags nolibopusfile ./cmd/receiver`，结果通过。
+覆盖率：`internal/monitor` 为 100.0%，`cmd/receiver` 为 4.8%。
