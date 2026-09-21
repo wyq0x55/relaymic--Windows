@@ -1,0 +1,109 @@
+package receiverconfig
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestDefaultConfigIsUsable(t *testing.T) {
+	cfg := Default("windows")
+	if cfg.Device != "cable input" {
+		t.Fatalf("Device = %q，want cable input", cfg.Device)
+	}
+	if cfg.BufferMS != DefaultBufferMS {
+		t.Fatalf("BufferMS = %d，want %d", cfg.BufferMS, DefaultBufferMS)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("默认配置应当合法，却报 %v", err)
+	}
+}
+
+func TestValidateRejectsBadSettings(t *testing.T) {
+	base := Default("windows")
+	base.Hub = "wss://mic.example.com/ws/receiver"
+
+	cases := []struct {
+		name   string
+		mutate func(*Config)
+	}{
+		{"Hub 用了 https", func(c *Config) { c.Hub = "https://mic.example.com/ws/receiver" }},
+		{"Hub 缺主机", func(c *Config) { c.Hub = "wss://" }},
+		{"设备为空", func(c *Config) { c.Device = "  " }},
+		{"缓冲过小", func(c *Config) { c.BufferMS = 5 }},
+		{"缓冲过大", func(c *Config) { c.BufferMS = 5000 }},
+		{"增益为负", func(c *Config) { c.Gain = -1 }},
+		{"两个回传源同时开", func(c *Config) { c.ReturnDevice = "CABLE-A Output"; c.ReturnLoopback = "Speakers" }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := base
+			tc.mutate(&cfg)
+			if err := cfg.Validate(); err == nil {
+				t.Fatalf("Validate() 放过了非法配置 %+v", cfg)
+			}
+		})
+	}
+}
+
+func TestLoadReturnsDefaultsWhenFileIsMissing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	cfg, err := Load(path, "windows")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Device != "cable input" || cfg.BufferMS != DefaultBufferMS {
+		t.Fatalf("首次运行应当拿到默认配置，得到 %+v", cfg)
+	}
+}
+
+func TestSaveThenLoadRoundTrips(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "nested", "config.json")
+	want := Default("windows")
+	want.Hub = "wss://mic.example.com/ws/receiver"
+	want.ReturnDevice = "VoiceMeeter Aux Output"
+	want.ForceRelay = true
+	want.TurnTunnel = true
+	want.Gain = 2.5
+
+	if err := Save(path, want); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+	got, err := Load(path, "windows")
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got != want {
+		t.Fatalf("往返后配置变了：\n got %+v\nwant %+v", got, want)
+	}
+	if _, err := os.Stat(path + ".tmp"); !os.IsNotExist(err) {
+		t.Fatal("Save() 留下了临时文件")
+	}
+}
+
+func TestLoadRejectsUnknownFields(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	// returnDevcie 是 returnDevice 的典型拼错：必须直接失败，不能静默忽略。
+	body := `{"hub":"wss://mic.example.com/ws/receiver","device":"cable input","returnDevcie":"CABLE-A Output"}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	_, err := Load(path, "windows")
+	if err == nil {
+		t.Fatal("Load() 接受了拼错的键")
+	}
+	if !strings.Contains(err.Error(), "returnDevcie") {
+		t.Fatalf("错误里应当点名拼错的键，得到 %v", err)
+	}
+}
+
+func TestDefaultPathSitsUnderTheUserConfigDir(t *testing.T) {
+	path := DefaultPath()
+	if filepath.Base(path) != "config.json" {
+		t.Fatalf("DefaultPath() = %q，文件名应当是 config.json", path)
+	}
+	if filepath.Base(filepath.Dir(path)) != "relaymic" {
+		t.Fatalf("DefaultPath() = %q，应当落在 relaymic 目录下", path)
+	}
+}
