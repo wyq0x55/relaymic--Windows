@@ -131,3 +131,23 @@ func TestHubICEServersPreservesSessionTURNCredentials(t *testing.T) {
 		t.Fatalf("TURN credential = %q, want %q", got, want)
 	}
 }
+
+func TestTunnelICEServersRewritesTURNToLocalShim(t *testing.T) {
+	got := tunnelICEServers([]signaling.ICEServer{
+		{URLs: []string{"stun:stun.example.com:3478"}},
+		{URLs: []string{"turn:179.255.106.84:3478?transport=udp"}, Username: "1700000600:s", Credential: "short-lived"},
+	}, "127.0.0.1:41234")
+
+	if len(got) != 2 {
+		t.Fatalf("len(tunnelICEServers()) = %d, want 2", len(got))
+	}
+	if got[0].URLs[0] != "stun:stun.example.com:3478" {
+		t.Fatalf("STUN entry rewritten: %+v", got[0])
+	}
+	if want := "turn:127.0.0.1:41234?transport=tcp"; got[1].URLs[0] != want {
+		t.Fatalf("TURN URL = %q, want %q", got[1].URLs[0], want)
+	}
+	if got[1].Username != "1700000600:s" || got[1].Credential != "short-lived" {
+		t.Fatalf("credentials lost in rewrite: %+v", got[1])
+	}
+}
