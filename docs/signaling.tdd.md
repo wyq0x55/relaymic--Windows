@@ -43,6 +43,18 @@
 
 ### 5. 接收端凭据解析（`cmd/receiver`）
 
+### 6. 过期配对码的补发（`internal/signaling`）
+
+**症状**：接收端连上后拿到的码 5 分钟就过期，而码只在"接收端连上来"和"会话结束"
+两处产生。现场慢一步，控制台页面上就再也没有码可给，只能重启接收端。
+
+**RED**：新增 `codejanitor_test.go`，把时钟推过 TTL 后调用 `refreshExpiredCodes`，
+断言接收端收到一张不同的 `waiting`。当时 `refreshExpiredCodes` 和 `Registry.LiveCode`
+都还不存在，测试编译失败。
+
+**GREEN**：`refreshExpiredCodes` 只处理"还连着、没有会话、码已过期"的接收端，
+由 `RunCodeJanitor` 每秒扫一次；`cmd/signaling` 启动它。
+
 - GREEN：`go test -count=1 -tags nolibopusfile ./cmd/receiver` → `ok`。
 
 ## 测试规格
@@ -75,6 +87,9 @@
 | 24 | token 错误时 `Run` 立即返回带状态码的错误，不做无谓重试 | `TestRunSurfacesAuthenticationFailure` | 集成 | PASS |
 | 25 | ctx 取消后 `Run` 返回 | `TestRunStopsOnContextCancel` | 集成 | PASS |
 | 26 | 凭据来源互斥、空文件、缺文件都报错 | `cmd/receiver/main_test.go:TestReadToken` | 单元 | PASS |
+| 27 | 码过期后 Hub 自动补发一张**不同**的新码，接收端不必重连 | `codejanitor_test.go:TestExpiredCodeIsReplacedWithoutReconnect` | 集成 | PASS |
+| 28 | 码还没过期就不换（换了等于把用户手里那张作废） | 同上（前半段断言 `LiveCode` 未变） | 集成 | PASS |
+| 29 | 通话中不补码 | `codejanitor_test.go:TestRefreshLeavesAnActiveCallAlone` | 集成 | PASS |
 
 ## 本机端到端验证
 

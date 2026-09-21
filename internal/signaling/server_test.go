@@ -22,11 +22,17 @@ type testHub struct {
 
 func newTestHub(t *testing.T) *testHub {
 	t.Helper()
+	return newTestHubWithNow(t, nil)
+}
+
+// newTestHubWithNow 允许注入时钟：配对码过期这种事，只有把时间推着走才测得了。
+func newTestHubWithNow(t *testing.T, now func() time.Time) *testHub {
+	t.Helper()
 	token, err := NewToken()
 	if err != nil {
 		t.Fatalf("NewToken() error = %v", err)
 	}
-	reg, err := NewRegistry(Config{Receivers: []ReceiverConfig{{Name: "公司电脑", Token: token}}})
+	reg, err := NewRegistry(Config{Receivers: []ReceiverConfig{{Name: "公司电脑", Token: token}}, Now: now})
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}

@@ -447,6 +447,65 @@ func (s *Server) issueCode(ctx context.Context, rc *receiverConn) error {
 	})
 }
 
+// refreshExpiredCodes 给"还连着、还没人配对、码已经过期"的接收端换一张新码。
+//
+// 码原本只在两处产生：接收端连上来、一次会话结束。可它只有 5 分钟，现场的人
+// 慢一点，页面上就再也没有码可给 —— 只能去重启接收端。这里补上第三种情况。
+//
+// 通话中不动：那会儿接收端不在等人配对，页面上冒出一张码只会让人以为会话断了。
+func (s *Server) refreshExpiredCodes(now time.Time) {
+	s.mu.Lock()
+	targets := make([]*receiverConn, 0, len(s.receivers))
+	for id, rc := range s.receivers {
+		if s.hasSessionLocked(id) {
+			continue
+		}
+		targets = append(targets, rc)
+	}
+	s.mu.Unlock()
+
+	for _, rc := range targets {
+		if _, expiresAt, ok := s.registry.LiveCode(rc.id); ok && now.Before(expiresAt) {
+			continue
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), s.writeTime)
+		err := s.issueCode(ctx, rc)
+		cancel()
+		if err != nil {
+			s.logger.Printf("换新配对码失败: %s: %v", rc.name, err)
+			continue
+		}
+		s.logger.Printf("配对码已过期，换了一张新的: %s", rc.name)
+	}
+}
+
+// hasSessionLocked 报告某台接收端是否有进行中的会话。调用方必须持有 s.mu。
+func (s *Server) hasSessionLocked(receiverID string) bool {
+	for _, sess := range s.sessions {
+		if sess.receiver != nil && sess.receiver.id == receiverID {
+			return true
+		}
+	}
+	return false
+}
+
+// RunCodeJanitor 周期性地把过期的配对码换成新的，直到 ctx 结束。
+func (s *Server) RunCodeJanitor(ctx context.Context, every time.Duration) {
+	if every <= 0 {
+		every = time.Second
+	}
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.refreshExpiredCodes(time.Now())
+		}
+	}
+}
+
 func bearerToken(r *http.Request) string {
 	header := r.Header.Get("Authorization")
 	const prefix = "Bearer "

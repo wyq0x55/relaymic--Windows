@@ -47,6 +47,11 @@ type Config struct {
 
 // Handlers 是控制面消息的落点。除 OnOffer 外都可以留空。
 type Handlers struct {
+	// OnConnected 在每次连上控制面后调用一次。
+	//
+	// 它和 OnCode 是两件事：码每 5 分钟就会换一张，而"连上了"只发生在
+	// 真正建立连接的时候。
+	OnConnected func()
 	// OnCode 在 Hub 发来新配对码时调用。
 	OnCode func(code string, expiresIn time.Duration)
 	// OnJoined 在发送端接入时调用。iceservers 是这条会话独有的 STUN/TURN
@@ -172,6 +177,10 @@ func (c *Client) session(ctx context.Context, h Handlers) error {
 	c.trackActive(conn)
 	defer c.untrackActive(conn)
 	conn.SetReadLimit(signaling.MaxMessageBytes)
+
+	if h.OnConnected != nil {
+		h.OnConnected()
+	}
 
 	for {
 		var msg signaling.Message

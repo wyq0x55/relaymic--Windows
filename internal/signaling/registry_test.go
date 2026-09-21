@@ -3,14 +3,29 @@ package signaling
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 )
 
-type fakeClock struct{ t time.Time }
+// fakeClock 是能被推着走的时钟。加锁是因为它也会被服务端协程读 ——
+// 测试里推时间的同时，Hub 那边可能正在取当前时间。
+type fakeClock struct {
+	mu sync.Mutex
+	t  time.Time
+}
 
-func (c *fakeClock) now() time.Time          { return c.t }
-func (c *fakeClock) advance(d time.Duration) { c.t = c.t.Add(d) }
+func (c *fakeClock) now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.t
+}
+
+func (c *fakeClock) advance(d time.Duration) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.t = c.t.Add(d)
+}
 
 // sequentialCodes 让每个测试都能预知下一个配对码，同时保留"每次都不一样"的语义。
 func sequentialCodes() func() (PairingCode, error) {

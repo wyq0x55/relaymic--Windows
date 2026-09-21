@@ -775,14 +775,25 @@ func (r *instance) start() error {
 	r.wg.Add(1)
 	go func() {
 		defer r.wg.Done()
+		// 连上之后第一张码是"这次连接"的结果，之后的码是 Hub 换的。
+		freshCode := true
 		err := client.Run(ctx, hubclient.Handlers{
-			OnCode: func(code string, expiresIn time.Duration) {
+			OnConnected: func() {
 				log.Printf("已连接 %s", r.opts.hub)
 				log.Printf("设备: %s", dev.Name)
-				r.pairing.Set(code, time.Now().Add(expiresIn))
 				if r.opts.monitorAddr == "" {
-					log.Printf("已生成一次性配对码（%d 分钟有效）；用 -monitor 127.0.0.1:7420 在本机查看", int(expiresIn.Minutes()))
+					log.Println("已生成一次性配对码；用 -monitor 127.0.0.1:7420 在本机查看")
 				}
+				freshCode = true
+			},
+			OnCode: func(code string, expiresIn time.Duration) {
+				if !freshCode {
+					// 码到期后 Hub 会自己补一张。这行是给"页面上的码怎么变了"
+					// 准备的 —— 不然只能看到配对码莫名其妙换掉。
+					log.Println("Hub 换了一张新配对码")
+				}
+				freshCode = false
+				r.pairing.Set(code, time.Now().Add(expiresIn))
 				r.st.setState("等待发送端")
 			},
 			OnJoined: func(session string, sessionICE []signaling.ICEServer) {

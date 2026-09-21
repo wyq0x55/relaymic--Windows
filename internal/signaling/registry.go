@@ -176,6 +176,19 @@ func (r *Registry) IssueCode(receiverID string) (PairingCode, time.Time, error) 
 // CodeTTL 是配对码的有效期，供 Hub 告诉客户端"这个码还能用多久"。
 func (r *Registry) CodeTTL() time.Duration { return r.codeTTL }
 
+// LiveCode 返回某台接收端当前的活码和它的到期时间。
+//
+// 只读，不改状态：Hub 用它判断"这张码是不是该换一张了"。
+func (r *Registry) LiveCode(receiverID string) (PairingCode, time.Time, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	entry, ok := r.live[receiverID]
+	if !ok {
+		return "", time.Time{}, false
+	}
+	return entry.code, entry.expiresAt, true
+}
+
 func (r *Registry) codeUsedByOther(receiverID string, code PairingCode) bool {
 	for id, entry := range r.live {
 		if id == receiverID {

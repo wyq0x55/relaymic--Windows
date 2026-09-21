@@ -8,6 +8,7 @@
 package signaling
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"flag"
@@ -19,6 +20,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/hueshu/relaymic/internal/signaling"
 	"github.com/hueshu/relaymic/internal/tlscert"
@@ -151,6 +153,13 @@ func run() {
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+
+	// 配对码过期后得有人换新的：不然接收端页面上会一直空着，现场只能重启它。
+	// 一秒一次的检查只是比一比时间，代价可以忽略。
+	janitorCtx, stopJanitor := context.WithCancel(context.Background())
+	defer stopJanitor()
+	go server.RunCodeJanitor(janitorCtx, time.Second)
+
 	<-stop
 	log.Println("退出")
 	_ = httpSrv.Close()

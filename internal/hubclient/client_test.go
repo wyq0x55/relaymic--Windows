@@ -259,6 +259,49 @@ func TestRunReconnectsAfterTheHubDropsTheConnection(t *testing.T) {
 	}
 }
 
+// "刚连上"和"又来了一张码"是两件事。
+//
+// Hub 每 5 分钟换一张新码，接收端要是把每次来码都当成连接事件，日志里就会
+// 冒出一堆"已连接"，把真正的断线重连淹掉。
+func TestRunReportsEachConnectionSeparatelyFromCodes(t *testing.T) {
+	token := "test-token"
+	hub := newFakeHub(t, token)
+	hub.dropAfter = 1
+	client := newTestClient(t, hub, token)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var mu sync.Mutex
+	connected, codes := 0, 0
+	go func() {
+		_ = client.Run(ctx, Handlers{
+			OnConnected: func() { mu.Lock(); connected++; mu.Unlock() },
+			OnCode:      func(string, time.Duration) { mu.Lock(); codes++; mu.Unlock() },
+		})
+	}()
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		done := connected >= 2 && codes >= 2
+		mu.Unlock()
+		if done {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if connected != hub.count() {
+		t.Fatalf("OnConnected 调用了 %d 次，Hub 接受了 %d 条连接，应当一一对应", connected, hub.count())
+	}
+	if codes < 2 {
+		t.Fatalf("OnCode 调用了 %d 次，want >= 2", codes)
+	}
+}
+
 func TestRunStopsOnContextCancel(t *testing.T) {
 	token := "test-token"
 	hub := newFakeHub(t, token)
