@@ -252,3 +252,34 @@ func TestParseKeepsTheProxy(t *testing.T) {
 		t.Fatalf("Proxy = %q，want http://10.0.0.1:8080", got.Proxy)
 	}
 }
+
+// 相对路径按配置所在目录解析：这是"整个文件夹拷给别人"能成立的前提。
+func TestResolveTokenFileUsesTheConfigDirectory(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "config.json")
+	if got := ResolveTokenFile(configPath, "receiver-token.txt"); got != filepath.Join(dir, "receiver-token.txt") {
+		t.Fatalf("ResolveTokenFile() = %q", got)
+	}
+	abs := filepath.Join(t.TempDir(), "token.txt")
+	if got := ResolveTokenFile(configPath, abs); got != abs {
+		t.Fatalf("绝对路径被改写了: %q", got)
+	}
+	if got := ResolveTokenFile(configPath, "   "); got != "" {
+		t.Fatalf("空值 = %q，want 空", got)
+	}
+}
+
+// 落盘时能写相对就写相对：绝对路径会把这份配置钉死在一台机器上。
+func TestRelativeToDirKeepsPathsInsideTheFolderRelative(t *testing.T) {
+	dir := t.TempDir()
+	if got := RelativeToDir(dir, filepath.Join(dir, "receiver-token.txt")); got != "receiver-token.txt" {
+		t.Fatalf("RelativeToDir() = %q，want receiver-token.txt", got)
+	}
+	outside := filepath.Join(t.TempDir(), "token.txt")
+	if got := RelativeToDir(dir, outside); got != outside {
+		t.Fatalf("目录外面的路径被改写了: %q", got)
+	}
+	if got := RelativeToDir(dir, ""); got != "" {
+		t.Fatalf("空路径 = %q", got)
+	}
+}

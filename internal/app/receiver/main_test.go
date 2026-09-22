@@ -70,21 +70,23 @@ func TestResolveTokenFilePrefersWhatTheUserSaid(t *testing.T) {
 	empty := t.TempDir()
 
 	cases := []struct {
-		name   string
-		flag   string
-		config string
-		exeDir string
-		want   string
+		name       string
+		flag       string
+		config     string
+		configPath string
+		exeDir     string
+		want       string
 	}{
-		{name: "命令行给的", flag: `C:\cli\token.txt`, config: `C:\cfg\token.txt`, exeDir: dir, want: `C:\cli\token.txt`},
-		{name: "配置文件里的", config: `C:\cfg\token.txt`, exeDir: dir, want: `C:\cfg\token.txt`},
+		{name: "命令行给的", flag: `C:\cli\token.txt`, config: `C:\cfg\token.txt`, configPath: `C:\cfg\config.json`, exeDir: dir, want: `C:\cli\token.txt`},
+		{name: "配置文件里的绝对路径", config: `C:\cfg\token.txt`, configPath: `C:\cfg\config.json`, exeDir: dir, want: `C:\cfg\token.txt`},
+		{name: "相对路径按配置目录解析", config: `receiver-token.txt`, configPath: filepath.Join(dir, "config.json"), exeDir: empty, want: beside},
 		{name: "旁边那份", exeDir: dir, want: beside},
 		{name: "都没有就是空", exeDir: empty, want: ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := resolveTokenFile(tc.flag, tc.config, tc.exeDir); got != tc.want {
-				t.Fatalf("resolveTokenFile(%q, %q, %q) = %q，want %q", tc.flag, tc.config, tc.exeDir, got, tc.want)
+			if got := resolveTokenFile(tc.flag, tc.config, tc.configPath, tc.exeDir); got != tc.want {
+				t.Fatalf("resolveTokenFile(%q, %q, %q, %q) = %q，want %q", tc.flag, tc.config, tc.configPath, tc.exeDir, got, tc.want)
 			}
 		})
 	}
@@ -272,5 +274,33 @@ func TestPersistedConfigNeverCarriesTheToken(t *testing.T) {
 	}
 	if strings.Contains(string(body), token) {
 		t.Fatalf("配置里出现了凭据：%s", body)
+	}
+}
+
+// 落盘要写相对路径（整个文件夹拷走还能用），运行时还得拿到能打开的绝对路径。
+func TestSavedTokenPathStaysRelativeAndStillResolves(t *testing.T) {
+	dir := t.TempDir()
+	o := options{
+		configPath: filepath.Join(dir, "config.json"),
+		tokenFile:  filepath.Join(dir, "receiver-token.txt"),
+		device:     "CABLE Input",
+		bufferMS:   receiverconfig.DefaultBufferMS,
+	}
+	body, err := json.Marshal(o.config())
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	if !strings.Contains(string(body), `"tokenFile":"receiver-token.txt"`) {
+		t.Fatalf("落盘的 tokenFile 不是相对路径：%s", body)
+	}
+	cfg, err := receiverconfig.Parse(body, o.config())
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if cfg.TokenFile != "receiver-token.txt" {
+		t.Fatalf("解析后 TokenFile = %q，want receiver-token.txt", cfg.TokenFile)
+	}
+	if back := o.withConfig(cfg); back.tokenFile != o.tokenFile {
+		t.Fatalf("withConfig 之后 tokenFile = %q，want %q", back.tokenFile, o.tokenFile)
 	}
 }

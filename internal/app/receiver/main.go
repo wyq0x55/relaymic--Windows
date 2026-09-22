@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -137,7 +138,7 @@ type options struct {
 func (o options) config() receiverconfig.Config {
 	return receiverconfig.Config{
 		Hub:            o.hub,
-		TokenFile:      o.tokenFile,
+		TokenFile:      o.tokenFileForDisplay(),
 		Device:         o.device,
 		ReturnDevice:   o.returnDevice,
 		ReturnLoopback: o.returnLoopback,
@@ -151,10 +152,17 @@ func (o options) config() receiverconfig.Config {
 	}
 }
 
+// tokenFileForDisplay 是配置里该存的那一份：和 config.json 同目录时就写相对
+// 路径（"receiver-token.txt"），这样整个文件夹拷到别的机器上照样能用。
+func (o options) tokenFileForDisplay() string {
+	return receiverconfig.RelativeToDir(filepath.Dir(o.configPath), o.tokenFile)
+}
+
 // withConfig 把一份配置盖到选项上，用于页面保存后立刻生效。
 func (o options) withConfig(cfg receiverconfig.Config) options {
 	o.hub = cfg.Hub
-	o.tokenFile = cfg.TokenFile
+	// 配置里存的是相对路径，运行时要用绝对路径：按 config.json 所在目录解析。
+	o.tokenFile = receiverconfig.ResolveTokenFile(o.configPath, cfg.TokenFile)
 	o.device = cfg.Device
 	o.returnDevice = cfg.ReturnDevice
 	o.returnLoopback = cfg.ReturnLoopback
@@ -219,7 +227,7 @@ func parseFlags() (options, error) {
 	if !set["token-file"] {
 		*tokenFile = cfg.TokenFile
 	}
-	*tokenFile = resolveTokenFile(flagTokenFile, cfg.TokenFile, receiverconfig.ExecutableDir())
+	*tokenFile = resolveTokenFile(flagTokenFile, cfg.TokenFile, *configPath, receiverconfig.ExecutableDir())
 	if !set["device"] {
 		*deviceName = cfg.Device
 	}
@@ -448,7 +456,7 @@ func (c *console) status(w http.ResponseWriter, r *http.Request) {
 		// 设置页要回填的那一份：和落盘的字段一一对应，页面不用自己拼。
 		"config": map[string]any{
 			"hub":            opts.hub,
-			"tokenFile":      opts.tokenFile,
+			"tokenFile":      opts.tokenFileForDisplay(),
 			"device":         opts.device,
 			"returnDevice":   opts.returnDevice,
 			"returnLoopback": opts.returnLoopback,
@@ -562,12 +570,12 @@ func (c *console) saveConfig(w http.ResponseWriter, r *http.Request) {
 //
 // 最后一条是为了"把一个文件夹拷给别人"：文件夹里就带着 receiver-token.txt，
 // 对方不需要知道任何绝对路径。
-func resolveTokenFile(flagValue, configValue, exeDir string) string {
+func resolveTokenFile(flagValue, configValue, configPath, exeDir string) string {
 	if flagValue != "" {
 		return flagValue
 	}
 	if configValue != "" {
-		return configValue
+		return receiverconfig.ResolveTokenFile(configPath, configValue)
 	}
 	if path, ok := receiverconfig.DefaultTokenFileFor(exeDir); ok {
 		return path

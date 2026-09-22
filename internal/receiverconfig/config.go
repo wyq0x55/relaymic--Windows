@@ -195,6 +195,41 @@ func DefaultTokenFileFor(exeDir string) (string, bool) {
 	return path, true
 }
 
+// ResolveTokenFile 把配置里的 tokenFile 变成这次真正要读的路径。
+//
+// 相对路径按配置文件所在目录解析：这样把整个文件夹拷给别人之后，里面的
+// receiver-token.txt 还能被找到，配置里也不必写死 C:\... 那种绝对路径。
+func ResolveTokenFile(configPath, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || filepath.IsAbs(value) {
+		return value
+	}
+	dir := filepath.Dir(configPath)
+	if dir == "" {
+		return value
+	}
+	return filepath.Join(dir, value)
+}
+
+// RelativeToDir 尽量把路径写成相对 dir 的形式；写不出来（在不同盘、在目录外面）
+// 就原样返回。
+//
+// 落盘时用：配置和凭据在同一个文件夹里时，存 "receiver-token.txt" 就够了 ——
+// 存绝对路径等于把这份配置钉死在这台机器上。
+func RelativeToDir(dir, path string) string {
+	if path == "" || dir == "" {
+		return path
+	}
+	rel, err := filepath.Rel(dir, path)
+	if err != nil {
+		return path
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return path
+	}
+	return rel
+}
+
 // ExecutableDir 返回本进程所在目录，取不到时返回空串。
 func ExecutableDir() string {
 	exe, err := os.Executable()
