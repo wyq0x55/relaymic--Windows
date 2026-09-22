@@ -13,7 +13,10 @@ import (
 // FileConfig 是 Hub 的配置文件形态。
 //
 // 它只有一份：公网入口地址、TLS 证书、允许的来源、ICE 配置、接收端清单。
-// 没有数据库、没有管理 API —— 改配置就是改文件再重启，少一个能被远程写坏的面。
+//
+// 管理面（/admin）默认不开，要同时配 adminTokenFile 和 receiversFile 才有：
+// 开了之后加人从管理面走，不用改这份配置再重启。没配就是 404，公网上的 Hub
+// 不会多出一个能被远程写坏的面。
 type FileConfig struct {
 	// Listen 是监听地址，生产上是 ":443"。
 	Listen string `json:"listen"`
@@ -29,6 +32,12 @@ type FileConfig struct {
 	Turn *TurnConfig `json:"turn,omitempty"`
 	// Receivers 是允许连进来的接收端。
 	Receivers []ReceiverConfig `json:"receivers"`
+	// AdminTokenFile 是管理面口令所在的文件（内容是一行 token）。
+	// 留空表示不开放管理面：/admin 一律 404。
+	AdminTokenFile string `json:"adminTokenFile"`
+	// ReceiversFile 是运行时新增的接收端清单落盘位置。
+	// 留空表示不支持在管理面加人（只能改这份配置再重启）。
+	ReceiversFile string `json:"receiversFile"`
 }
 
 // TurnConfig 是 Hub 读取 coturn REST API 共享密钥所需的最小配置。
@@ -59,7 +68,10 @@ func LoadFile(path string) (*FileConfig, error) {
 		return nil, fmt.Errorf("配置 %s: listen 不能为空", path)
 	}
 	if len(cfg.Receivers) == 0 {
-		return nil, fmt.Errorf("配置 %s: 至少要配一台接收端", path)
+		// 开了管理面就允许先空着：加人从 /admin 走，不必改配置重启。
+		if cfg.AdminTokenFile == "" || cfg.ReceiversFile == "" {
+			return nil, fmt.Errorf("配置 %s: 至少要配一台接收端，或者配齐 adminTokenFile 和 receiversFile 用管理面加人", path)
+		}
 	}
 	if err := validatePublicICEServers(cfg.ICEServers); err != nil {
 		return nil, fmt.Errorf("配置 %s: %w", path, err)

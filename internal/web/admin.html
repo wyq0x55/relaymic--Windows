@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RelayMic 管理</title>
+<style>
+  :root {
+    --bg: #0b0e13; --fg: #e6edf3; --dim: #8b98a5; --line: #222b36;
+    --ok: #3fb950; --warn: #d29922; --err: #f85149; --card: #111721;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; background: var(--bg); color: var(--fg);
+    font: 14px/1.6 system-ui, -apple-system, "Segoe UI", "Noto Sans CJK SC", sans-serif;
+  }
+  main { max-width: 900px; margin: 0 auto; display: grid; gap: 16px; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 10px; color: var(--dim); font-weight: 600; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  input[type=text], input[type=password] {
+    font: inherit; color: var(--fg); background: #10141b; width: 100%;
+    border: 1px solid var(--line); border-radius: 7px; padding: 8px 10px;
+  }
+  input:focus { outline: 1px solid #3a4a63; }
+  button {
+    font: inherit; color: var(--fg); background: #1b2431; border: 1px solid var(--line);
+    border-radius: 7px; padding: 8px 14px; cursor: pointer;
+  }
+  button:hover { background: #232f3f; }
+  button.primary { background: #1f6feb; border-color: #1f6feb; }
+  button.primary:hover { background: #2a7bf5; }
+  button.danger { color: var(--err); }
+  button:disabled { opacity: .5; cursor: default; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid var(--line); }
+  th { color: var(--dim); font-weight: 600; font-size: 13px; }
+  td.mono, code { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+  .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; border: 1px solid var(--line); }
+  .pill.ok { color: var(--ok); border-color: #1d3b23; }
+  .pill.off { color: var(--dim); }
+  .pill.busy { color: var(--warn); border-color: #3d3115; }
+  .hint { color: var(--dim); font-size: 13px; }
+  .err { color: var(--err); font-size: 13px; }
+  .token-box {
+    background: #0b0e13; border: 1px dashed var(--line); border-radius: 8px;
+    padding: 12px; display: grid; gap: 8px;
+  }
+  .token-box code { word-break: break-all; font-size: 13px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>RelayMic 管理</h1>
+
+  <section class="card" id="loginView">
+    <h2>登录</h2>
+    <div class="row">
+      <input id="adminToken" type="password" placeholder="管理口令（adminTokenFile 里的那一行）" autocomplete="current-password">
+      <button id="login" class="primary" type="button">登录</button>
+    </div>
+    <p class="err" id="loginMsg"></p>
+    <p class="hint">口令只发给本机控制面，存在 HttpOnly cookie 里，页面脚本拿不到它。</p>
+  </section>
+
+  <section class="card" id="appView" hidden>
+    <h2>新增接收端</h2>
+    <div class="row">
+      <input id="newName" type="text" placeholder="名字，例如 张三的笔记本" spellcheck="false">
+      <button id="create" class="primary" type="button">生成 token</button>
+    </div>
+    <p class="hint" id="createMsg"></p>
+    <div class="token-box" id="tokenBox" hidden>
+      <div>把这一行发给对方，让他写进自己那份 <code>receiver-token.txt</code>：</div>
+      <code id="newToken"></code>
+      <div class="row">
+        <button id="copyToken" type="button">复制</button>
+        <span class="hint">只显示这一次 —— Hub 只存摘要，之后自己也拿不回来。</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="listView" hidden>
+    <h2>接收端 <span class="hint" id="listHint"></span></h2>
+    <table>
+      <thead>
+        <tr><th>名字</th><th>来源</th><th>状态</th><th>创建时间</th><th></th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="row" style="margin-top:12px">
+      <button id="refresh" type="button">刷新</button>
+      <button id="logout" type="button">退出登录</button>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+
+function showLogin(message) {
+  $('loginView').hidden = false;
+  $('appView').hidden = true;
+  $('listView').hidden = true;
+  $('loginMsg').textContent = message || '';
+}
+
+function showApp() {
+  $('loginView').hidden = true;
+  $('appView').hidden = false;
+  $('listView').hidden = false;
+}
+
+async function api(path, options = {}) {
+  const res = await fetch(path, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+  });
+  if (res.status === 401) {
+    showLogin('口令不对或会话过期了');
+    throw new Error('unauthorized');
+  }
+  return res;
+}
+
+$('login').onclick = async () => {
+  $('loginMsg').textContent = '登录中…';
+  try {
+    const res = await fetch('/admin/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: $('adminToken').value.trim() }),
+    });
+    if (!res.ok) {
+      $('loginMsg').textContent = res.status === 429 ? '试得太多，过一分钟再来' : '口令不对';
+      return;
+    }
+    $('adminToken').value = '';
+    showApp();
+    await load();
+  } catch {
+    $('loginMsg').textContent = '控制面没有响应';
+  }
+};
+
+$('logout').onclick = async () => {
+  await fetch('/admin/logout', { method: 'POST' });
+  showLogin('已退出');
+};
+
+$('refresh').onclick = load;
+
+$('create').onclick = async () => {
+  const name = $('newName').value.trim();
+  if (!name) { $('createMsg').textContent = '先写个名字'; return; }
+  $('create').disabled = true;
+  $('createMsg').textContent = '生成中…';
+  try {
+    const res = await api('/admin/api/receivers', { method: 'POST', body: JSON.stringify({ name }) });
+    if (!res.ok) {
+      $('createMsg').textContent = (await res.text()).trim();
+      return;
+    }
+    const created = await res.json();
+    $('createMsg').textContent = `已新增「${created.name}」，对方现在就能用`;
+    $('newToken').textContent = created.token;
+    $('tokenBox').hidden = false;
+    $('newName').value = '';
+    await load();
+  } catch (error) {
+    if (error.message !== 'unauthorized') $('createMsg').textContent = '生成失败：' + error.message;
+  } finally {
+    $('create').disabled = false;
+  }
+};
+
+$('copyToken').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText($('newToken').textContent);
+    $('createMsg').textContent = '已复制';
+  } catch {
+    $('createMsg').textContent = '复制失败，请手动选中';
+  }
+};
+
+function fmtTime(value) {
+  if (!value) return '—';
+  const at = new Date(value);
+  if (Number.isNaN(at.getTime())) return '—';
+  return at.toLocaleString('zh-CN', { hour12: false });
+}
+
+function render(receivers) {
+  const rows = $('rows');
+  rows.innerHTML = '';
+  if (!receivers.length) {
+    const tr = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = 5;
+    td.className = 'hint';
+    td.textContent = '还没有接收端';
+    tr.appendChild(td);
+    rows.appendChild(tr);
+    return;
+  }
+  for (const r of receivers) {
+    const tr = document.createElement('tr');
+
+    const name = document.createElement('td');
+    name.textContent = r.name;
+    tr.appendChild(name);
+
+    const source = document.createElement('td');
+    source.textContent = r.dynamic ? '管理面' : '配置文件';
+    tr.appendChild(source);
+
+    const state = document.createElement('td');
+    const pill = document.createElement('span');
+    if (r.inCall) { pill.className = 'pill busy'; pill.textContent = '通话中'; }
+    else if (r.online) { pill.className = 'pill ok'; pill.textContent = '在线'; }
+    else { pill.className = 'pill off'; pill.textContent = '离线'; }
+    state.appendChild(pill);
+    tr.appendChild(state);
+
+    const created = document.createElement('td');
+    created.className = 'mono';
+    created.textContent = fmtTime(r.createdAt);
+    tr.appendChild(created);
+
+    const actions = document.createElement('td');
+    if (r.dynamic) {
+      const del = document.createElement('button');
+      del.className = 'danger';
+      del.textContent = '注销';
+      del.onclick = async () => {
+        if (!confirm(`注销「${r.name}」？它的 token 立刻失效，正在连的会被断开。`)) return;
+        const res = await api('/admin/api/receivers/' + encodeURIComponent(r.id), { method: 'DELETE' });
+        if (!res.ok) { alert((await res.text()).trim()); return; }
+        await load();
+      };
+      actions.appendChild(del);
+    } else {
+      actions.className = 'hint';
+      actions.textContent = '在服务器配置里';
+    }
+    tr.appendChild(actions);
+
+    rows.appendChild(tr);
+  }
+}
+
+async function load() {
+  try {
+    const res = await api('/admin/api/receivers');
+    if (!res.ok) { $('listHint').textContent = '读不到列表'; return; }
+    const view = await res.json();
+    render(view.receivers || []);
+    const online = (view.receivers || []).filter(r => r.online).length;
+    $('listHint').textContent = `共 ${(view.receivers || []).length} 台，在线 ${online}`;
+  } catch (error) {
+    if (error.message !== 'unauthorized') $('listHint').textContent = '读不到列表';
+  }
+}
+
+// 打开就先探一次：有会话直接进列表，没有就显示登录框。
+(async () => {
+  try {
+    const res = await fetch('/admin/api/receivers');
+    if (res.ok) {
+      showApp();
+      const view = await res.json();
+      render(view.receivers || []);
+      $('listHint').textContent = `共 ${(view.receivers || []).length} 台`;
+    } else {
+      showLogin('');
+    }
+  } catch {
+    showLogin('控制面没有响应');
+  }
+  setInterval(() => { if (!$('listView').hidden) load(); }, 5000);
+})();
+</script>
+</body>
+</html>

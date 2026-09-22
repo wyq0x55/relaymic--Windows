@@ -31,6 +31,24 @@ func NewToken() (string, error) {
 // DigestToken 把 token 收敛成定长摘要。
 func DigestToken(token string) TokenDigest { return sha256.Sum256([]byte(token)) }
 
+// encodeDigest / decodeDigest 是摘要落盘用的编码：清单里只存摘要，不存 token。
+func encodeDigest(d TokenDigest) string {
+	return base64.RawURLEncoding.EncodeToString(d[:])
+}
+
+func decodeDigest(encoded string) (TokenDigest, error) {
+	raw, err := base64.RawURLEncoding.DecodeString(encoded)
+	if err != nil {
+		return TokenDigest{}, fmt.Errorf("摘要不是 raw url-safe base64: %w", err)
+	}
+	if len(raw) != TokenDigestBytes {
+		return TokenDigest{}, fmt.Errorf("摘要必须是 %d 字节，实际 %d 字节", TokenDigestBytes, len(raw))
+	}
+	var d TokenDigest
+	copy(d[:], raw)
+	return d, nil
+}
+
 // TokenMatches 常数时间比较摘要与待验证 token。
 func TokenMatches(digest TokenDigest, presented string) bool {
 	if presented == "" {

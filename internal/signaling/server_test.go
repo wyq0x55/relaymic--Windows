@@ -28,6 +28,12 @@ func newTestHub(t *testing.T) *testHub {
 // newTestHubWithNow 允许注入时钟：配对码过期这种事，只有把时间推着走才测得了。
 func newTestHubWithNow(t *testing.T, now func() time.Time) *testHub {
 	t.Helper()
+	return newTestHubConfigured(t, now, nil)
+}
+
+// newTestHubConfigured 允许用例改 ServerConfig：管理面要注入 admin 凭据和清单。
+func newTestHubConfigured(t *testing.T, now func() time.Time, tweak func(*ServerConfig)) *testHub {
+	t.Helper()
 	token, err := NewToken()
 	if err != nil {
 		t.Fatalf("NewToken() error = %v", err)
@@ -36,11 +42,15 @@ func newTestHubWithNow(t *testing.T, now func() time.Time) *testHub {
 	if err != nil {
 		t.Fatalf("NewRegistry() error = %v", err)
 	}
-	srv, err := NewServer(ServerConfig{
+	cfg := ServerConfig{
 		Registry:   reg,
 		ICEServers: []ICEServer{{URLs: []string{"stun:stun.example.com:3478"}}},
 		Page:       []byte("<!doctype html><title>RelayMic</title>"),
-	})
+	}
+	if tweak != nil {
+		tweak(&cfg)
+	}
+	srv, err := NewServer(cfg)
 	if err != nil {
 		t.Fatalf("NewServer() error = %v", err)
 	}

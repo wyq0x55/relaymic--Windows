@@ -14,7 +14,12 @@
 | Hub 地址 | 你部署的控制面，形如 `wss://<Hub 主机>:9443/ws/receiver` | |
 | 发送端页面 | `https://<Hub 主机>:9443/` | 对方用手机或另一台电脑打开 |
 
-生成 token：
+**推荐：在 Hub 的管理面上生成**（见 `docs/signaling.md` 的"管理面"一节）：
+浏览器打开 `https://<Hub 主机>:9443/admin`，登录后填个名字点「生成 token」，
+把显示出来的那一行发给对方。对方写进自己的 `receiver-token.txt` 就能用，
+**不用重启 Hub，也不会打断正在通话的人**。
+
+没有开管理面时，也可以在 VPS 上生成：
 
 ```bash
 relaymic signaling -gen-receiver "别人的电脑"
@@ -26,7 +31,7 @@ relaymic signaling -gen-receiver "别人的电脑"
 ]
 ```
 
-把这一条加进 Hub 的 `receivers` 再重启 Hub：
+把这一条加进 Hub 的 `receivers` 再重启 Hub（这一步会掐断当前所有连接）：
 
 ```json
 {
@@ -37,7 +42,8 @@ relaymic signaling -gen-receiver "别人的电脑"
 }
 ```
 
-重启会断开当前所有连接，正在通话的那一次要重新配对。加人之前先说一声。
+重启会断开当前所有连接，正在通话的那一次要重新配对。加人之前先说一声 ——
+这也是为什么值得把管理面开起来。
 
 ## 二、对方要做的
 

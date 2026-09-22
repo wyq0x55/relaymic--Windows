@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 )
@@ -175,6 +176,59 @@ func (r *Registry) IssueCode(receiverID string) (PairingCode, time.Time, error) 
 
 // CodeTTL 是配对码的有效期，供 Hub 告诉客户端"这个码还能用多久"。
 func (r *Registry) CodeTTL() time.Duration { return r.codeTTL }
+
+// Add 在运行时登记一台接收端。
+//
+// 这条路径让"加一个人"不用重启 Hub —— 重启会掐断正在通话的人，而那个动作
+// 本来和已有的人无关。
+func (r *Registry) Add(rec ReceiverRecord) (*Receiver, error) {
+	if rec.ID == "" || rec.Name == "" {
+		return nil, errors.New("接收端记录缺少 id 或名字")
+	}
+	digest, err := decodeDigest(rec.Digest)
+	if err != nil {
+		return nil, fmt.Errorf("接收端 %s: %w", rec.Name, err)
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.byID[rec.ID]; ok {
+		return nil, fmt.Errorf("接收端 %s 已经在册", rec.ID)
+	}
+	for _, other := range r.byID {
+		if other.name == rec.Name {
+			return nil, fmt.Errorf("已经有一台叫 %q 的接收端", rec.Name)
+		}
+	}
+	added := &Receiver{id: rec.ID, name: rec.Name, digest: digest}
+	r.byID[rec.ID] = added
+	return added, nil
+}
+
+// Remove 注销一台接收端：身份和它的活码一起作废。
+//
+// 留着码等于"删了人还能连进来"，所以两件事必须一起做。
+func (r *Registry) Remove(id string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.byID[id]; !ok {
+		return false
+	}
+	delete(r.byID, id)
+	delete(r.live, id)
+	return true
+}
+
+// Receivers 列出全部接收端，按名字排序，供运维页面展示。
+func (r *Registry) Receivers() []Receiver {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]Receiver, 0, len(r.byID))
+	for _, rec := range r.byID {
+		out = append(out, *rec)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].name < out[j].name })
+	return out
+}
 
 // LiveCode 返回某台接收端当前的活码和它的到期时间。
 //

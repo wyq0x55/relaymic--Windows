@@ -86,6 +86,37 @@ WebSocket 为同一个 session 下发短期 TURN 凭据；公开端点永远不�
 
 ## 部署
 
+### 0. 管理面（可选，但推荐）
+
+默认没有管理面：加一个人要改这份配置再重启 Hub，重启会掐断正在通话的人。
+配齐下面两项就会开 `/admin`：
+
+```bash
+relaymic-signaling -gen-admin-token > /etc/relaymic/admin-token
+sudo chmod 600 /etc/relaymic/admin-token
+sudo chown relaymic:relaymic /etc/relaymic/admin-token
+```
+
+```json
+{
+  "adminTokenFile": "/etc/relaymic/admin-token",
+  "receiversFile": "/var/lib/relaymic/receivers.json"
+}
+```
+
+- 浏览器打开 `https://<你的 Hub>/admin`，用口令登录（口令存进 HttpOnly cookie，
+  页面脚本拿不到），在页面上生成 token、看谁在线、注销。
+- 脚本/命令行用 Bearer：
+  `curl -H "Authorization: Bearer <口令>" https://<你的 Hub>/admin/api/receivers`
+- `receiversFile` 只存 token 摘要：这份文件被读走也不等于交出可用凭据。
+- 生成出来的 token 只在创建那一刻显示一次；对方写进自己的 `receiver-token.txt`
+  就能连，**不用重启 Hub**。
+- 注销当场生效：连接被断开，token 立刻失效。
+- 口令泄漏等于管理面失守。它是公网上的一个面，登录口有每分钟 8 次的失败限流，
+  但仍然：别复用别的口令，别写进脚本历史。
+
+配了管理面之后 `receivers` 可以为空 —— 加人从页面上走。
+
 ### 1. 生成接收端凭据
 
 ```bash

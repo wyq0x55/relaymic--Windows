@@ -35,6 +35,12 @@ type ServerConfig struct {
 	TunnelTarget string
 	// Page 是发送端页面。为空则根路径返回 404。
 	Page []byte
+	// AdminToken 是管理面的凭据摘要。零值表示不开放管理面（/admin 一律 404）。
+	AdminToken TokenDigest
+	// ReceiverStore 保存运行时新增的接收端。为空表示不支持动态添加。
+	ReceiverStore *ReceiverStore
+	// AdminPage 是管理页面。配了 AdminToken 才会用到它。
+	AdminPage []byte
 	// AllowedOrigins 是允许发起 WebSocket 的 Origin host 白名单。
 	// 留空表示只允许同源（Origin host 必须等于请求 Host）。
 	AllowedOrigins []string
@@ -64,6 +70,8 @@ type Server struct {
 	mu        sync.Mutex
 	receivers map[string]*receiverConn
 	sessions  map[string]*session
+
+	admin *adminSurface
 }
 
 type receiverConn struct {
@@ -110,6 +118,10 @@ func NewServer(cfg ServerConfig) (*Server, error) {
 		receivers:    make(map[string]*receiverConn),
 		sessions:     make(map[string]*session),
 	}
+	// 管理面默认不开：没给凭据就整片 404。公网上的 Hub 不该默认多一个面。
+	if cfg.AdminToken != (TokenDigest{}) && cfg.ReceiverStore != nil {
+		s.admin = newAdminSurface(cfg.AdminToken, cfg.ReceiverStore, cfg.AdminPage, nil)
+	}
 	if s.maxAttempts <= 0 {
 		s.maxAttempts = MaxPairingAttemptsPerConn
 	}
@@ -134,6 +146,12 @@ func (s *Server) sessionICEServers(sessionID string) []ICEServer {
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/ice", s.handleICE)
+	mux.HandleFunc("GET /admin", s.handleAdminPage)
+	mux.HandleFunc("POST /admin/login", s.handleAdminLogin)
+	mux.HandleFunc("POST /admin/logout", s.handleAdminLogout)
+	mux.HandleFunc("GET /admin/api/receivers", s.handleAdminReceivers)
+	mux.HandleFunc("POST /admin/api/receivers", s.handleAdminReceivers)
+	mux.HandleFunc("DELETE /admin/api/receivers/", s.handleAdminReceiver)
 	mux.HandleFunc("GET /ws/receiver", s.handleReceiver)
 	mux.HandleFunc("GET /ws/sender", s.handleSender)
 	mux.HandleFunc("GET "+TunnelPath, s.handleTunnel)

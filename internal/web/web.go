@@ -14,3 +14,10 @@ var SenderHTML []byte
 //
 //go:embed monitor.html
 var MonitorHTML []byte
+
+// AdminHTML 是控制面的管理页：登录、生成接收端 token、注销、看谁在线。
+//
+// 只在配置里给了 adminTokenFile 时才会被用到；没配就是 404。
+//
+//go:embed admin.html
+var AdminHTML []byte

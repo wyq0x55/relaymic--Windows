@@ -11,6 +11,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -38,6 +39,7 @@ func run() {
 	configPath := flag.String("config", "", "配置文件路径（JSON）；用 -gen-token 时不需要")
 	addr := flag.String("addr", "", "覆盖监听地址，默认取配置文件里的 listen")
 	genToken := flag.Bool("gen-token", false, "生成一个接收端 token 并退出")
+	genAdmin := flag.Bool("gen-admin-token", false, "生成一个管理面口令（写进 adminTokenFile）并退出")
 	var genReceivers stringList
 	flag.Var(&genReceivers, "gen-receiver", "生成一台接收端配置（可重复，名字用这个值）并退出")
 	selfSignedDir := flag.String("self-signed-dir", "", "本地自测：在该目录生成自签证书并直接启用 TLS")
@@ -49,7 +51,15 @@ func run() {
 	log.Println("本程序不提供任何担保，遵循 AGPL-3.0 发布。")
 	log.Println("源码：https://github.com/hueshu/relaymic")
 
-	if *genToken || len(genReceivers) > 0 {
+	if *genToken || *genAdmin || len(genReceivers) > 0 {
+		if *genAdmin {
+			token, err := signaling.NewToken()
+			if err != nil {
+				log.Fatalln("生成口令失败:", err)
+			}
+			fmt.Println(token)
+			return
+		}
 		if len(genReceivers) > 0 {
 			receivers := make([]signaling.ReceiverConfig, 0, len(genReceivers))
 			for _, name := range genReceivers {
@@ -91,6 +101,10 @@ func run() {
 	if err != nil {
 		log.Fatalln("配置里的 TURN 不可用:", err)
 	}
+	adminToken, store, err := loadAdmin(cfg, registry)
+	if err != nil {
+		log.Fatalln(err)
+	}
 	server, err := signaling.NewServer(signaling.ServerConfig{
 		Registry:       registry,
 		ICEServers:     cfg.ICEServers,
@@ -98,6 +112,9 @@ func run() {
 		TunnelTarget:   cfg.TunnelTarget(),
 		Page:           web.SenderHTML,
 		AllowedOrigins: cfg.AllowedOrigins,
+		AdminToken:     adminToken,
+		ReceiverStore:  store,
+		AdminPage:      web.AdminHTML,
 	})
 	if err != nil {
 		log.Fatalln(err)
@@ -163,6 +180,39 @@ func run() {
 	<-stop
 	log.Println("退出")
 	_ = httpSrv.Close()
+}
+
+// loadAdmin 准备管理面：读管理口令、加载动态接收端清单，并把清单里已有的
+// 接收端登记进 Registry。
+//
+// 两者都留空就是不开管理面 —— 公网上的 Hub 不该默认多一个能被远程写坏的面。
+func loadAdmin(cfg *signaling.FileConfig, registry *signaling.Registry) (signaling.TokenDigest, *signaling.ReceiverStore, error) {
+	if cfg.AdminTokenFile == "" || cfg.ReceiversFile == "" {
+		if cfg.AdminTokenFile != "" || cfg.ReceiversFile != "" {
+			return signaling.TokenDigest{}, nil, errors.New("管理面要么配齐 adminTokenFile 和 receiversFile，要么两个都不配")
+		}
+		log.Println("管理面未开启（没有配置 adminTokenFile / receiversFile）")
+		return signaling.TokenDigest{}, nil, nil
+	}
+	raw, err := os.ReadFile(cfg.AdminTokenFile)
+	if err != nil {
+		return signaling.TokenDigest{}, nil, fmt.Errorf("读管理口令失败: %w", err)
+	}
+	digest, err := signaling.ParseTokenDigest(strings.TrimSpace(string(raw)))
+	if err != nil {
+		return signaling.TokenDigest{}, nil, fmt.Errorf("管理口令不可用: %w", err)
+	}
+	store, err := signaling.LoadReceiverStore(cfg.ReceiversFile)
+	if err != nil {
+		return signaling.TokenDigest{}, nil, err
+	}
+	for _, rec := range store.List() {
+		if _, err := registry.Add(rec); err != nil {
+			return signaling.TokenDigest{}, nil, fmt.Errorf("清单里的接收端 %s 不可用: %w", rec.Name, err)
+		}
+	}
+	log.Printf("管理面已开启: /admin（清单 %s，已登记 %d 台）", cfg.ReceiversFile, len(store.List()))
+	return digest, store, nil
 }
 
 // loadCert 优先用配置里的证书；本地自测时退到自签证书。
