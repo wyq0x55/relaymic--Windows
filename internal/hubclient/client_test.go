@@ -394,3 +394,58 @@ func TestCloseSessionRejectsEmptySessionOrOfflineClient(t *testing.T) {
 		t.Fatal("CloseSession() 在没有连接时成功了")
 	}
 }
+
+// 代理地址填错必须在构造时就报错：拖到拨号才发现的话，现场只看见一句
+// "context deadline exceeded"，看不出是代理写错了。
+func TestProxyClientRejectsABadAddress(t *testing.T) {
+	cases := []string{"socks4://10.0.0.1:1080", "10.0.0.1:8080", "http://"}
+	for _, bad := range cases {
+		if _, err := proxyClient(bad); err == nil {
+			t.Fatalf("proxyClient(%q) 放过了不合法的地址", bad)
+		}
+	}
+	if c, err := proxyClient("   "); err != nil || c != nil {
+		t.Fatalf("proxyClient(空) = %v, %v，want nil, nil", c, err)
+	}
+	if c, err := proxyClient("http://10.0.0.1:8080"); err != nil || c == nil {
+		t.Fatalf("proxyClient(合法) = %v, %v", c, err)
+	}
+}
+
+// 只放行代理的网络里，拨号必须真的经代理出去。
+//
+// 直连的现场表现是"一直卡在 SYN_SENT"，接收端看着起来了却一个配对码也拿不到，
+// 所以这条要用"代理确实收到了 CONNECT"来验，而不是只看有没有报错。
+func TestDialGoesThroughTheConfiguredProxy(t *testing.T) {
+	var mu sync.Mutex
+	var seen []string
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r.Method+" "+r.Host)
+		mu.Unlock()
+		http.Error(w, "这里不是隧道", http.StatusBadGateway)
+	}))
+	defer proxy.Close()
+
+	client, err := New(Config{
+		URL:         "wss://hub.example.invalid/ws/receiver",
+		Token:       "token-abc",
+		Proxy:       proxy.URL,
+		DialTimeout: 5 * time.Second,
+	})
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if _, err := client.connect(context.Background()); err == nil {
+		t.Fatal("connect() 在没有隧道的情况下成功了")
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(seen) == 0 {
+		t.Fatal("代理没收到任何请求：拨号没走代理")
+	}
+	if seen[0] != "CONNECT hub.example.invalid:443" {
+		t.Fatalf("代理收到的是 %q，want CONNECT hub.example.invalid:443", seen[0])
+	}
+}

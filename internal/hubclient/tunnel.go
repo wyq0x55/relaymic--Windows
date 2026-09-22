@@ -20,7 +20,7 @@ func (c *Client) DialTunnel(ctx context.Context) (net.Conn, error) {
 	}
 	header := http.Header{}
 	header.Set("Authorization", "Bearer "+c.token)
-	conn, _, err := c.dial(ctx, target, &websocket.DialOptions{HTTPHeader: header})
+	conn, _, err := c.dial(ctx, target, c.dialOptions(header))
 	if err != nil {
 		return nil, err
 	}

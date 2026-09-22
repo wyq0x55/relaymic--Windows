@@ -221,3 +221,34 @@ func TestDefaultTokenFileForFindsTheTokenBesideTheExecutable(t *testing.T) {
 		t.Fatalf("DefaultTokenFileFor() = %q, %v，want %q, true", got, ok, token)
 	}
 }
+
+// 只放行代理的网络靠这一项出网：填错要当场报错，而不是等到拨号超时才发现。
+func TestValidateChecksTheProxy(t *testing.T) {
+	ok := Default("windows")
+	ok.Proxy = "http://10.0.0.1:8080"
+	if err := ok.Validate(); err != nil {
+		t.Fatalf("合法代理被拒: %v", err)
+	}
+	for _, bad := range []string{"10.0.0.1:8080", "socks4://10.0.0.1:1080", "http://"} {
+		cfg := Default("windows")
+		cfg.Proxy = bad
+		if err := cfg.Validate(); err == nil {
+			t.Fatalf("Validate() 放过了代理 %q", bad)
+		}
+	}
+	// 留空是合法的：那就按环境变量 HTTP_PROXY/HTTPS_PROXY 走。
+	if err := Default("windows").Validate(); err != nil {
+		t.Fatalf("空代理被拒: %v", err)
+	}
+}
+
+// 页面保存的代理要能读回来，不然改完重启就丢。
+func TestParseKeepsTheProxy(t *testing.T) {
+	got, err := Parse([]byte(`{"proxy":"http://10.0.0.1:8080"}`), Default("windows"))
+	if err != nil {
+		t.Fatalf("Parse() error = %v", err)
+	}
+	if got.Proxy != "http://10.0.0.1:8080" {
+		t.Fatalf("Proxy = %q，want http://10.0.0.1:8080", got.Proxy)
+	}
+}

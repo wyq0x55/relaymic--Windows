@@ -32,6 +32,7 @@ type Config struct {
 	NoCGNAT        bool    `json:"noCgnat,omitempty"`
 	ForceRelay     bool    `json:"forceRelay,omitempty"`
 	TurnTunnel     bool    `json:"turnTunnel,omitempty"`
+	Proxy          string  `json:"proxy,omitempty"`
 	DTX            bool    `json:"dtx,omitempty"`
 }
 
@@ -70,6 +71,22 @@ func (c Config) Validate() error {
 	}
 	if c.ReturnDevice != "" && c.ReturnLoopback != "" {
 		return errors.New("回传只能二选一：虚拟音频设备或系统播放设备环回")
+	}
+	// 代理是可以留空的（那就按环境变量走）；填了就得是个能解析的地址，
+	// 不然要等到拨号超时才发现，报出来的还只是一句 deadline exceeded。
+	if proxy := strings.TrimSpace(c.Proxy); proxy != "" {
+		u, err := url.Parse(proxy)
+		if err != nil {
+			return fmt.Errorf("代理地址无法解析: %w", err)
+		}
+		switch u.Scheme {
+		case "http", "https", "socks5":
+		default:
+			return fmt.Errorf("代理地址必须以 http://、https:// 或 socks5:// 开头，收到 %q", c.Proxy)
+		}
+		if u.Host == "" {
+			return fmt.Errorf("代理地址缺少主机: %q", c.Proxy)
+		}
 	}
 	return nil
 }

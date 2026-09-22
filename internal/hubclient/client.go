@@ -12,6 +12,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -43,6 +45,13 @@ type Config struct {
 	Logger *log.Logger
 	// Dial 留空用 websocket.Dial。
 	Dial DialFunc
+	// Proxy 是出网用的 HTTP 代理，形如 http://host:8080。
+	//
+	// 有的网络只放行代理：直连公网地址连 TCP 都握不上手（一直卡在 SYN_SENT），
+	// 接收端看着像"连上了"其实一个配对码也拿不到。留空时按环境变量
+	// HTTP_PROXY/HTTPS_PROXY 走 —— 从资源管理器双击启动的进程没有这些变量，
+	// 所以"能不能出网"不能只靠环境。
+	Proxy string
 }
 
 // Handlers 是控制面消息的落点。除 OnOffer 外都可以留空。
@@ -74,6 +83,7 @@ type Client struct {
 	reconnectMax time.Duration
 	logger       *log.Logger
 	dial         DialFunc
+	httpClient   *http.Client
 
 	writeMu sync.Mutex
 
@@ -113,7 +123,42 @@ func New(cfg Config) (*Client, error) {
 	if c.dial == nil {
 		c.dial = websocket.Dial
 	}
+	httpClient, err := proxyClient(cfg.Proxy)
+	if err != nil {
+		return nil, err
+	}
+	c.httpClient = httpClient
 	return c, nil
+}
+
+// proxyClient 按配置造一个走代理的 HTTP 客户端。
+//
+// 没配就是 nil：交给默认传输，它自己会看 HTTP_PROXY / HTTPS_PROXY。
+func proxyClient(proxy string) (*http.Client, error) {
+	proxy = strings.TrimSpace(proxy)
+	if proxy == "" {
+		return nil, nil
+	}
+	u, err := url.Parse(proxy)
+	if err != nil {
+		return nil, fmt.Errorf("代理地址无法解析 %q: %w", proxy, err)
+	}
+	switch u.Scheme {
+	case "http", "https", "socks5":
+	default:
+		return nil, fmt.Errorf("代理地址必须以 http://、https:// 或 socks5:// 开头，收到 %q", proxy)
+	}
+	if u.Host == "" {
+		return nil, fmt.Errorf("代理地址缺少主机: %q", proxy)
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = http.ProxyURL(u)
+	return &http.Client{Transport: transport}, nil
+}
+
+// dialOptions 是每次拨号都要带的两样：凭据头，以及出网用的客户端。
+func (c *Client) dialOptions(header http.Header) *websocket.DialOptions {
+	return &websocket.DialOptions{HTTPHeader: header, HTTPClient: c.httpClient}
 }
 
 // handshakeError 表示控制面在握手阶段就拒绝了这次连接。
@@ -230,7 +275,7 @@ func (c *Client) connect(ctx context.Context) (*websocket.Conn, error) {
 
 	header := http.Header{}
 	header.Set("Authorization", "Bearer "+c.token)
-	conn, resp, err := c.dial(dialCtx, c.url, &websocket.DialOptions{HTTPHeader: header})
+	conn, resp, err := c.dial(dialCtx, c.url, c.dialOptions(header))
 	if err != nil {
 		if resp != nil && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) {
 			return nil, &handshakeError{url: c.url, status: resp.StatusCode}

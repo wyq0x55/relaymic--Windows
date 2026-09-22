@@ -166,6 +166,9 @@
         <label>Hub 地址
           <input id="cfgHub" type="text" spellcheck="false" placeholder="wss://主机:9443/ws/receiver">
         </label>
+        <label>出网代理（只在只能走代理的网络里需要）
+          <input id="cfgProxy" type="text" spellcheck="false" placeholder="留空表示直连，例如 http://主机:8080">
+        </label>
         <label>接收端凭据文件（只存路径，token 本身不进配置文件）
           <input id="cfgTokenFile" type="text" spellcheck="false" placeholder="C:\relaymic\receiver-token.txt">
         </label>
@@ -296,6 +299,7 @@ function renderPairing(pairing) {
 
 function fillConfig(cfg) {
   $('cfgHub').value = cfg.hub || '';
+  $('cfgProxy').value = cfg.proxy || '';
   $('cfgTokenFile').value = cfg.tokenFile || '';
   configValues = {
     device: cfg.device || '',
@@ -314,6 +318,7 @@ function fillConfig(cfg) {
 function readConfig() {
   return {
     hub: $('cfgHub').value.trim(),
+    proxy: $('cfgProxy').value.trim(),
     tokenFile: $('cfgTokenFile').value.trim(),
     device: $('cfgDevice').value.trim(),
     returnDevice: $('cfgReturnDevice').value.trim(),

@@ -124,6 +124,7 @@ type options struct {
 	turnPass       string
 	forceRelay     bool
 	turnTunnel     bool
+	proxy          string
 	dtx            bool
 	record         string
 }
@@ -145,6 +146,7 @@ func (o options) config() receiverconfig.Config {
 		NoCGNAT:        o.noCGNAT,
 		ForceRelay:     o.forceRelay,
 		TurnTunnel:     o.turnTunnel,
+		Proxy:          o.proxy,
 		DTX:            o.dtx,
 	}
 }
@@ -161,6 +163,7 @@ func (o options) withConfig(cfg receiverconfig.Config) options {
 	o.noCGNAT = cfg.NoCGNAT
 	o.forceRelay = cfg.ForceRelay
 	o.turnTunnel = cfg.TurnTunnel
+	o.proxy = cfg.Proxy
 	o.dtx = cfg.DTX
 	return o
 }
@@ -189,6 +192,7 @@ func parseFlags() (options, error) {
 	turnPass := flag.String("turn-pass", "", "TURN 密码")
 	forceRelay := flag.Bool("force-relay", false, "只用 TURN 中继候选，用于验证中继链路")
 	turnTunnel := flag.Bool("turn-tunnel", false, "把 TURN 流量经控制面隧道转发（只放行 HTTP 代理的网络需要）")
+	proxy := flag.String("proxy", "", "出网用的 HTTP 代理，形如 http://主机:8080；留空则按环境变量 HTTP_PROXY/HTTPS_PROXY")
 	// 默认关：DTX 的 VAD 会把低电平语音误判成静音掐掉，实测每秒断一次。
 	// 语音识别场景带宽根本不是瓶颈，没有理由为省包冒断字的险。
 	dtx := flag.Bool("dtx", false, "让发送端静音时停发包（省带宽，但可能掐掉轻声）")
@@ -240,6 +244,9 @@ func parseFlags() (options, error) {
 	if !set["turn-tunnel"] {
 		*turnTunnel = cfg.TurnTunnel
 	}
+	if !set["proxy"] {
+		*proxy = cfg.Proxy
+	}
 	if !set["dtx"] {
 		*dtx = cfg.DTX
 	}
@@ -264,6 +271,7 @@ func parseFlags() (options, error) {
 		turnPass:       *turnPass,
 		forceRelay:     *forceRelay,
 		turnTunnel:     *turnTunnel,
+		proxy:          *proxy,
 		dtx:            *dtx,
 		record:         *record,
 	}, cfgErr
@@ -449,6 +457,7 @@ func (c *console) status(w http.ResponseWriter, r *http.Request) {
 			"noCgnat":        opts.noCGNAT,
 			"forceRelay":     opts.forceRelay,
 			"turnTunnel":     opts.turnTunnel,
+			"proxy":          opts.proxy,
 			"dtx":            opts.dtx,
 		},
 		"pairing": map[string]any{
@@ -774,7 +783,7 @@ func (r *instance) start() error {
 	if err != nil {
 		return err
 	}
-	client, err := hubclient.New(hubclient.Config{URL: r.opts.hub, Token: secret})
+	client, err := hubclient.New(hubclient.Config{URL: r.opts.hub, Token: secret, Proxy: r.opts.proxy})
 	if err != nil {
 		return err
 	}
