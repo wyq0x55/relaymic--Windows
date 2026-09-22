@@ -46,8 +46,6 @@ jobs:
           # 静态链接 opus，用户拿到单个 exe，不用带 DLL。
           # nolibopusfile：只用编解码，不链 opusfile（那是读 .opus 文件用的）
           go build -tags nolibopusfile -ldflags "-extldflags -static" -o relaymic-sender.exe ./cmd/sender
-          # GUI 版：-H windowsgui 不弹黑色控制台窗口
-          go build -tags nolibopusfile -ldflags "-H windowsgui -extldflags -static" -o 远程麦克风.exe ./cmd/sender-gui
           # Receiver 与 sender 共用 malgo/miniaudio；Windows 下会走原生音频后端。
           go build -tags nolibopusfile -ldflags "-extldflags -static" -o relaymic-receiver.exe ./cmd/receiver
           # 唯一入口：不带参数起本机应用（接收端 + 控制台），带子命令跑对应命令。
@@ -60,7 +58,6 @@ jobs:
           path: |
             relaymic.exe
             relaymic-sender.exe
-            远程麦克风.exe
             relaymic-receiver.exe
             relaymic-signaling.exe
 

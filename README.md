@@ -131,17 +131,21 @@ source: "we don't store it" is worth less than being able to check.
 ## Layout
 
 ```
+cmd/relaymic     the only entry point. `relaymic` starts the local app (receiver + console
+                 page); `relaymic <command>` runs one of the commands below
 cmd/receiver     Receiver: dials the control plane, takes the stream, decodes, writes to the
-                 virtual device. Listens on nothing unless you pass -monitor
+                 virtual device. Its console page is where you configure it
 cmd/signaling    public control plane: one HTTPS/WSS 443 entry, pairing codes, SDP relay.
                  Deploy this on any host with a TLS certificate
 cmd/sender       command-line sender
-cmd/sender-gui   Windows GUI sender (frozen — the web sender covers it)
 cmd/probe, selfcheck, stuncheck, turncheck   diagnostics
+internal/cli     subcommand dispatch and usage
+internal/app     the commands themselves; cmd/* are thin shells over these
 internal/audio   audio devices and processing chain
 internal/rtc     WebRTC send/receive
 internal/sender  sender engine
 internal/web     web sender (embedded in the binary)
+internal/browser opening the console in the system browser
 site/            relaymic.com landing page (Cloudflare Workers)
 docs/            design and decision records
 ```
@@ -150,8 +154,8 @@ docs/            design and decision records
 
 Each of these was considered and rejected; writing them down saves the discussion:
 
-- **New features in the native Windows sender.** The web sender covers the same ground;
-  `cmd/sender-gui` is frozen where it is
+- **A native GUI.** The local console page is the UI. The old `cmd/sender-gui` was deleted
+  rather than kept around frozen
 - **Windows → Windows.** Microsoft's RDP redirects the microphone already, free and better
 - **Same-room iPhone → Mac as the main use case.** Apple's Continuity Microphone is free
 - **Changing the measured audio parameters.** Buffer depth, DTX, the gain gate, stretch

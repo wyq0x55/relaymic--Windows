@@ -111,14 +111,18 @@ relaymic version
 ## 仓库结构
 
 ```
-cmd/receiver     Mac 接收端：收流、解码、写入虚拟设备、提供网页发送端
+cmd/relaymic     唯一入口。`relaymic` 起本机应用（接收端 + 控制台页面）；
+                 `relaymic <命令>` 跑下面某个命令
+cmd/receiver     接收端：收流、解码、写入虚拟设备；控制台页面就是它的配置界面
 cmd/sender       命令行发送端
-cmd/sender-gui   Windows 图形发送端（已冻结，网页版已覆盖）
 cmd/probe,selfcheck,stuncheck,turncheck   诊断工具
+internal/cli     子命令分发与用法
+internal/app     各命令的实现；cmd/* 只是薄壳
 internal/audio   音频设备与处理链
 internal/rtc     WebRTC 收发
 internal/sender  发送端引擎
 internal/web     网页发送端（嵌入二进制）
+internal/browser 用系统默认浏览器打开控制台
 site/            relaymic.com 落地页（Cloudflare Workers）
 docs/            设计与决策记录
 ```
@@ -127,8 +131,7 @@ docs/            设计与决策记录
 
 这些都认真考虑过并否决了，写下来是为了省掉重复讨论：
 
-- **Windows 原生发送端的新功能**。网页发送端已经覆盖了同样的场景，`cmd/sender-gui`
-  冻结在当前状态
+- **原生图形界面**。本机控制台页面就是界面，老的 `cmd/sender-gui` 直接删掉，不留冻结版
 - **Windows → Windows**。微软的 RDP 自带麦克风重定向，免费且更好用，没有理由重做
 - **同屋 iPhone → Mac 主打这个场景**。Apple 的连续互通麦克风免费，打不过也没必要打
 - **改动音频链的实测参数**。缓冲 150ms、DTX 关闭、增益渐变门、拉伸回补——每一个都是
