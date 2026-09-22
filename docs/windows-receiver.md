@@ -51,10 +51,12 @@ one-time pairing code and countdown, ICE path, live audio level, packet statisti
 and the selected devices. The Receiver token is never displayed.
 
 The settings form scans the machine (`GET /api/devices`, loopback only) and offers the
-devices as dropdown entries, tagged `虚拟线` for virtual cables: writing into the virtual
+devices in a dropdown, grouped into `虚拟线` and `其他设备`: writing into the virtual
 microphone and capturing a second virtual cable are the two paths that matter, and picking
-a physical device there does not fail — it just silently produces no audio. Typing a
-substring still works, and "重新扫描设备" picks up a cable installed while the page is open.
+a physical device there does not fail — it just silently produces no audio. A value saved
+as a substring (`CABLE Input`) is matched to the scanned full name, and a device that is
+currently missing stays visible as the current value instead of being silently replaced.
+"重新扫描设备" picks up a cable installed while the page is open.
 
 The pairing code is intentionally hidden when the monitor is opened through a LAN address;
 use the loopback URL above to view or copy it.
