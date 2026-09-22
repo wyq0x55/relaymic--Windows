@@ -57,6 +57,11 @@ func Run(args []string, cmds []Command, stdout, stderr io.Writer) int {
 		usage(stderr, cmds)
 		return 2
 	}
+	// 接收端就是这个"敲下去该看见页面"的应用：显式写 receiver 也一样给它补上
+	// 控制台默认值。不想开就显式写 -monitor "" 或 -open=false。
+	if cmd.Name == AppName {
+		return cmd.Run(appArgs(args[1:]))
+	}
 	return cmd.Run(args[1:])
 }
 

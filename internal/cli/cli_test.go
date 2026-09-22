@@ -10,7 +10,7 @@ import (
 func testCommands(ran *[]string) []Command {
 	return []Command{
 		{Name: "receiver", Summary: "接收端", Run: func(args []string) int { *ran = append(*ran, "receiver "+strings.Join(args, " ")); return 0 }},
-		{Name: "probe", Summary: "设备检查", Run: func(args []string) int { *ran = append(*ran, "probe"); return 0 }},
+		{Name: "probe", Summary: "设备检查", Run: func(args []string) int { *ran = append(*ran, "probe "+strings.Join(args, " ")); return 0 }},
 	}
 }
 
@@ -40,20 +40,44 @@ func TestRunWithoutArgumentsStartsTheApp(t *testing.T) {
 func TestRunDispatchesToTheNamedCommand(t *testing.T) {
 	var ran []string
 	code := Run([]string{"probe"}, testCommands(&ran), &bytes.Buffer{}, &bytes.Buffer{})
-	if code != 0 || len(ran) != 1 || ran[0] != "probe" {
+	if code != 0 || len(ran) != 1 || strings.TrimSpace(ran[0]) != "probe" {
 		t.Fatalf("code=%d ran=%v", code, ran)
 	}
 }
 
-// 显式写了子命令就是"这次怎么跑"，不该再被塞默认参数。
-func TestRunKeepsExplicitArgumentsUntouched(t *testing.T) {
+// 显式写 receiver 也是同一个应用：命令行跑起来就该看见页面。
+func TestRunGivesTheReceiverTheConsoleDefaults(t *testing.T) {
 	var ran []string
 	code := Run([]string{"receiver", "-hub", "wss://example.invalid/ws/receiver"}, testCommands(&ran), &bytes.Buffer{}, &bytes.Buffer{})
 	if code != 0 || len(ran) != 1 {
 		t.Fatalf("code=%d ran=%v", code, ran)
 	}
-	if strings.Contains(ran[0], DefaultMonitorAddr) {
-		t.Fatalf("显式子命令不该被注入默认控制台地址：%q", ran[0])
+	if !strings.Contains(ran[0], "-monitor "+DefaultMonitorAddr) || !strings.Contains(ran[0], "-open") {
+		t.Fatalf("receiver 没拿到控制台默认值：%q", ran[0])
+	}
+}
+
+// 不想开控制台就显式关掉，别把默认值又塞回去。
+func TestRunLeavesAnExplicitlyDisabledConsoleAlone(t *testing.T) {
+	var ran []string
+	code := Run([]string{"receiver", "-monitor", ""}, testCommands(&ran), &bytes.Buffer{}, &bytes.Buffer{})
+	if code != 0 || len(ran) != 1 {
+		t.Fatalf("code=%d ran=%v", code, ran)
+	}
+	if strings.Contains(ran[0], DefaultMonitorAddr) || strings.Contains(ran[0], "-open") {
+		t.Fatalf("显式关掉控制台之后又被塞了默认值：%q", ran[0])
+	}
+}
+
+// 别的命令是干活的工具，不该顺手弹出一个页面。
+func TestRunLeavesOtherCommandsAlone(t *testing.T) {
+	var ran []string
+	code := Run([]string{"probe", "-device", "CABLE Input"}, testCommands(&ran), &bytes.Buffer{}, &bytes.Buffer{})
+	if code != 0 || len(ran) != 1 {
+		t.Fatalf("code=%d ran=%v", code, ran)
+	}
+	if ran[0] != "probe -device CABLE Input" {
+		t.Fatalf("probe 的参数被改了：%q", ran[0])
 	}
 }
 
