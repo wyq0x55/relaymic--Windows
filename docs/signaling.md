@@ -109,6 +109,10 @@ sudo chown relaymic:relaymic /etc/relaymic/admin-token
 - 脚本/命令行用 Bearer：
   `curl -H "Authorization: Bearer <口令>" https://<你的 Hub>/admin/api/receivers`
 - `receiversFile` 只存 token 摘要：这份文件被读走也不等于交出可用凭据。
+- `receiversFile` 的目录要对服务可写。systemd 里开了 `ProtectSystem=strict` 时，
+  `/var/lib` 默认只读 —— 加 `StateDirectory=relaymic`，或把它指到已经可写的目录
+  （例如 `/opt/relaymic/receivers.json`）。不然生成 token 时会报
+  `read-only file system`。
 - 生成出来的 token 只在创建那一刻显示一次；对方写进自己的 `receiver-token.txt`
   就能连，**不用重启 Hub**。
 - 注销当场生效：连接被断开，token 立刻失效。

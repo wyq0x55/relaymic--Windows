@@ -137,9 +137,30 @@ sudo chmod 0755 /opt/relaymic/relaymic-signaling
   },
   "receivers": [
     {"name": "company-windows", "token": "REPLACE_WITH_GENERATED_TOKEN"}
-  ]
+  ],
+  "adminTokenFile": "/etc/relaymic/admin-token",
+  "receiversFile": "/var/lib/relaymic/receivers.json"
 }
 ```
+
+### 管理面（可选）
+
+配齐 `adminTokenFile` 和 `receiversFile` 之后 `/admin` 才存在；两项都不配就是
+404。开了以后加人不用改配置重启（重启会掐断正在通话的人）。
+
+```bash
+sudo -u relaymic /opt/relaymic/relaymic-signaling -gen-admin-token > /root/relaymic-admin-token
+sudo install -o relaymic -g relaymic -m 0600 /root/relaymic-admin-token /etc/relaymic/admin-token
+sudo rm /root/relaymic-admin-token   # 抄给用户之后
+```
+
+`receiversFile` 所在的目录必须对服务可写。unit 里有 `ProtectSystem=strict`，
+**只有 `ReadWritePaths` 和 systemd 自己管的目录可写**，`/var/lib` 默认是只读的 ——
+不处理就会在页面上生成 token 时报 `read-only file system`。两种做法选一个：
+
+- 给 unit 加 `StateDirectory=relaymic`（systemd 会建好 `/var/lib/relaymic` 并自动
+  允许写；推荐）；
+- 或者把 `receiversFile` 指到已经可写的目录，例如 `/opt/relaymic/receivers.json`。
 
 `allowedOrigins` 只填 host，不填 `https://`。令牌生成方式如下；输出只进入受限文件：
 
@@ -181,6 +202,8 @@ PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/opt/relaymic
+# 管理面的接收端清单要落盘；systemd 会建好这个目录并允许写。
+StateDirectory=relaymic
 
 [Install]
 WantedBy=multi-user.target
