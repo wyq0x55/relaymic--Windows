@@ -48,7 +48,13 @@ RelayMic never falls back to the Windows default speakers when the configured vi
 Start the Receiver with `-monitor "127.0.0.1:7420"`, then open
 `http://127.0.0.1:7420/monitor` on the same Windows computer. It shows the current
 one-time pairing code and countdown, ICE path, live audio level, packet statistics,
-and a read-only summary of the selected devices. The Receiver token is never displayed.
+and the selected devices. The Receiver token is never displayed.
+
+The settings form scans the machine (`GET /api/devices`, loopback only) and offers the
+devices as dropdown entries, tagged `虚拟线` for virtual cables: writing into the virtual
+microphone and capturing a second virtual cable are the two paths that matter, and picking
+a physical device there does not fail — it just silently produces no audio. Typing a
+substring still works, and "重新扫描设备" picks up a cable installed while the page is open.
 
 The pairing code is intentionally hidden when the monitor is opened through a LAN address;
 use the loopback URL above to view or copy it.
@@ -59,3 +65,7 @@ Use a second virtual cable for Teams speaker return: Teams plays to `VoiceMeeter
 and start the Receiver with `-return-device "VoiceMeeter Aux Output"`. Public Signaling and
 short-lived coturn credentials are documented in `docs/signaling.md`; use `-force-relay` only
 when validating the relay path.
+
+Running `relaymic` (or `relaymic receiver`) with no console arguments defaults to
+`-monitor 127.0.0.1:7420 -open`, so the page comes up on its own. `-monitor ""` turns the
+console off and `-open=false` only skips the browser.

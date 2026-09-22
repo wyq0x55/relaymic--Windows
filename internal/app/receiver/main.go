@@ -400,6 +400,7 @@ func (c *console) routes() *http.ServeMux {
 	mux.HandleFunc("POST /api/session/close", c.closeSession)
 	mux.HandleFunc("POST /api/config", c.saveConfig)
 	mux.HandleFunc("GET /api/events", c.serveEvents)
+	mux.HandleFunc("GET /api/devices", c.serveDevices)
 	return mux
 }
 

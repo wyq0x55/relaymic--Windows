@@ -171,15 +171,15 @@
         </label>
         <div class="two">
           <label>输出设备（写进虚拟麦克风）
-            <input id="cfgDevice" type="text" spellcheck="false" placeholder="CABLE Input">
+            <input id="cfgDevice" type="text" spellcheck="false" list="devOutput" placeholder="CABLE Input">
           </label>
           <label>回传：采集虚拟线
-            <input id="cfgReturnDevice" type="text" spellcheck="false" placeholder="留空表示不回传">
+            <input id="cfgReturnDevice" type="text" spellcheck="false" list="devReturn" placeholder="留空表示不回传">
           </label>
         </div>
         <div class="two">
           <label>回传：环回采集播放设备
-            <input id="cfgReturnLoopback" type="text" spellcheck="false" placeholder="和上面只能填一个">
+            <input id="cfgReturnLoopback" type="text" spellcheck="false" list="devLoopback" placeholder="和上面只能填一个">
           </label>
           <label>抖动缓冲（毫秒，20–2000）
             <input id="cfgBuffer" type="number" min="20" max="2000" step="10">
@@ -196,10 +196,16 @@
         </div>
         <div class="row">
           <button id="save" class="primary" type="submit">保存并重启接收端</button>
+          <button id="rescan" type="button">重新扫描设备</button>
           <span id="saveMsg" class="hint"></span>
         </div>
+        <span id="deviceHint" class="hint"></span>
       </form>
     </section>
+
+    <datalist id="devOutput"></datalist>
+    <datalist id="devReturn"></datalist>
+    <datalist id="devLoopback"></datalist>
 
     <section class="card span">
       <h2>日志 <span id="logHint" class="hint"></span></h2>
@@ -318,6 +324,44 @@ function readConfig() {
   };
 }
 
+// 设备名不该靠背。扫一遍本机，把候选塞进 datalist：既能下拉选，也还能手填
+// 一段名字（服务端本来就是按子串匹配的）。
+function fillDeviceList(id, options) {
+  const list = $(id);
+  list.innerHTML = '';
+  for (const d of options || []) {
+    const option = document.createElement('option');
+    option.value = d.name;
+    const tags = [];
+    if (d.virtual) tags.push('虚拟线');
+    if (d.default) tags.push('系统默认');
+    option.label = tags.join(' · ');
+    list.appendChild(option);
+  }
+}
+
+async function scanDevices() {
+  const hint = $('deviceHint');
+  hint.textContent = '正在扫描本机音频设备…';
+  try {
+    const res = await fetch('/api/devices');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const inv = await res.json();
+    fillDeviceList('devOutput', inv.output);
+    fillDeviceList('devReturn', inv.return);
+    fillDeviceList('devLoopback', inv.loopback);
+    if (inv.error) {
+      hint.textContent = '扫描失败：' + inv.error;
+      return;
+    }
+    hint.textContent = `扫到输出 ${inv.output.length} · 录制 ${inv.return.length} · 可环回 ${inv.loopback.length}；下拉里选，或自己填一段名字`;
+  } catch (error) {
+    hint.textContent = '扫描失败：' + error.message;
+  }
+}
+
+$('rescan').onclick = scanDevices;
+
 // 保存是写操作：带上自定义头，服务端据此拒绝浏览器里其他页面发起的 POST。
 $('settings').onsubmit = async event => {
   event.preventDefault();
@@ -418,6 +462,8 @@ function renderOffline() {
 
 pollStatus();
 pollEvents();
+// 设备是外插的：页面打开时扫一次，插好虚拟声卡之后点"重新扫描设备"再来一次。
+scanDevices();
 setInterval(pollStatus, 1000);
 setInterval(pollEvents, 3000);
 </script>
