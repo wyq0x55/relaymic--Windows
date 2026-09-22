@@ -162,6 +162,24 @@ sudo rm /root/relaymic-admin-token   # 抄给用户之后
   允许写；推荐）；
 - 或者把 `receiversFile` 指到已经可写的目录，例如 `/opt/relaymic/receivers.json`。
 
+已经踩到了就这么补（改完不用动配置）：
+
+```bash
+# 二选一：加一个 drop-in（推荐，不动原 unit），在编辑器里写
+#   [Service]
+#   StateDirectory=relaymic
+sudo systemctl edit relaymic-signaling
+# 或者直接往原 unit 的 [Service] 段里塞一行
+sudo sed -i '/^\[Service\]/a StateDirectory=relaymic' /etc/systemd/system/relaymic-signaling.service
+
+sudo systemctl daemon-reload && sudo systemctl restart relaymic-signaling
+systemctl show relaymic-signaling -p StateDirectory   # 应当输出 relaymic
+ls -ld /var/lib/relaymic                              # 应当属于 relaymic
+```
+
+Hub 启动时会自己探一次这个目录，写不进去会在日志里打
+`警告: 管理面生成 token 会失败 —— ...`；页面上生成 token 会回 500 并写清原因。
+
 `allowedOrigins` 只填 host，不填 `https://`。令牌生成方式如下；输出只进入受限文件：
 
 ```bash

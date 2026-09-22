@@ -1,6 +1,7 @@
 package signaling
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -104,6 +105,67 @@ func mustDigest(t *testing.T, encoded string) TokenDigest {
 		t.Fatalf("decodeDigest(%q) error = %v", encoded, err)
 	}
 	return d
+}
+
+// unwritableStorePath 造一个写不进去的清单路径：把父目录做成一个普通文件。
+// 不依赖 chmod，Windows 上也一样会失败。
+func unwritableStorePath(t *testing.T) string {
+	t.Helper()
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, []byte("not a directory\n"), 0o600); err != nil {
+		t.Fatalf("write blocker: %v", err)
+	}
+	return filepath.Join(blocker, "receivers.json")
+}
+
+// 全新部署的机器上清单目录还不存在，启动检查要顺手建出来。
+func TestReceiverStoreVerifyWritableCreatesTheDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "state")
+	store, err := LoadReceiverStore(filepath.Join(dir, "receivers.json"))
+	if err != nil {
+		t.Fatalf("LoadReceiverStore() error = %v", err)
+	}
+	if err := store.VerifyWritable(); err != nil {
+		t.Fatalf("VerifyWritable() error = %v", err)
+	}
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		t.Fatalf("目录没建出来: %v", err)
+	}
+	// 探针只探一次，不能留下垃圾：saveLocked 用的就是这个名字。
+	if _, err := os.Stat(store.path + ".tmp"); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("探针临时文件没清掉: %v", err)
+	}
+}
+
+// 生产上踩过的那一次：unit 里 ProtectSystem=strict，/var/lib 对服务只读。
+// 启动就得失败，并且要说清该改哪儿 —— 不然要等到有人生成 token 才看见一句 errno。
+func TestReceiverStoreVerifyWritableReportsAnUnwritablePath(t *testing.T) {
+	store, err := LoadReceiverStore(unwritableStorePath(t))
+	if err != nil {
+		t.Fatalf("LoadReceiverStore() error = %v", err)
+	}
+	err = store.VerifyWritable()
+	if !errors.Is(err, ErrStoreNotWritable) {
+		t.Fatalf("VerifyWritable() error = %v，want ErrStoreNotWritable", err)
+	}
+	if !strings.Contains(err.Error(), "StateDirectory=relaymic") {
+		t.Fatalf("报错没说清怎么修: %v", err)
+	}
+}
+
+// 落盘失败也要归到 ErrStoreNotWritable：管理面靠它决定回 500 还是 400。
+func TestReceiverStoreAddReportsAnUnwritablePath(t *testing.T) {
+	store, err := LoadReceiverStore(unwritableStorePath(t))
+	if err != nil {
+		t.Fatalf("LoadReceiverStore() error = %v", err)
+	}
+	if _, _, err := store.Add("别人的电脑", time.Now()); !errors.Is(err, ErrStoreNotWritable) {
+		t.Fatalf("Add() error = %v，want ErrStoreNotWritable", err)
+	}
+	if got := store.List(); len(got) != 0 {
+		t.Fatalf("写失败之后内存里还留着记录: %v", got)
+	}
 }
 
 // 动态加进来的接收端要能立刻用它的 token 通过认证：加人不该等于重启 Hub。

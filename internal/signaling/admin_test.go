@@ -3,9 +3,11 @@ package signaling
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -279,3 +281,36 @@ func TestAdminSessionExpires(t *testing.T) {
 }
 
 var _ = httptest.NewServer
+
+// 清单写不进去是部署问题（unit 没给可写目录），不是"名字填错了"：
+// 回 500，而且正文要说清该改哪儿。
+func TestAdminMintFailsWith500WhenTheStoreIsNotWritable(t *testing.T) {
+	adminToken := mustNewToken(t)
+	store, err := LoadReceiverStore(unwritableStorePath(t))
+	if err != nil {
+		t.Fatalf("LoadReceiverStore() error = %v", err)
+	}
+	digest, err := ParseTokenDigest(adminToken)
+	if err != nil {
+		t.Fatalf("ParseTokenDigest() error = %v", err)
+	}
+	hub := newTestHubConfigured(t, nil, func(cfg *ServerConfig) {
+		cfg.AdminToken = digest
+		cfg.ReceiverStore = store
+		cfg.AdminPage = []byte("<!doctype html><title>RelayMic 管理</title>")
+	})
+
+	res, err := http.DefaultClient.Do(adminRequest(t, http.MethodPost,
+		hub.http.URL+"/admin/api/receivers", `{"name":"别人的电脑"}`, adminToken))
+	if err != nil {
+		t.Fatalf("POST: %v", err)
+	}
+	defer res.Body.Close()
+	body, _ := io.ReadAll(res.Body)
+	if res.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("落盘失败 = %d，want 500", res.StatusCode)
+	}
+	if !strings.Contains(string(body), "StateDirectory=relaymic") {
+		t.Fatalf("正文没说清怎么修: %s", body)
+	}
+}

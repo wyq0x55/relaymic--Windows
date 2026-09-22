@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -266,6 +267,13 @@ func (s *Server) handleAdminReceivers(w http.ResponseWriter, r *http.Request) {
 		}
 		record, token, err := s.admin.store.Add(body.Name, s.admin.now())
 		if err != nil {
+			// 清单写不进去是服务器自己的事（多半是 unit 没给可写目录），
+			// 回 400 会让人以为是名字填错了。
+			if errors.Is(err, ErrStoreNotWritable) {
+				s.logger.Printf("管理面新增接收端失败: %v", err)
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -310,6 +318,11 @@ func (s *Server) handleAdminReceiver(w http.ResponseWriter, r *http.Request) {
 	// 清单里没有（配置里的静态接收端）就不能从管理面删：那份配置在服务器上，
 	// 删了下次重启又会回来。
 	if err := s.admin.store.Remove(id); err != nil {
+		if errors.Is(err, ErrStoreNotWritable) {
+			s.logger.Printf("管理面注销接收端失败: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return
 	}

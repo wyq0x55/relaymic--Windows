@@ -206,6 +206,14 @@ func loadAdmin(cfg *signaling.FileConfig, registry *signaling.Registry) (signali
 	if err != nil {
 		return signaling.TokenDigest{}, nil, err
 	}
+	// 先探一次能不能落盘：不然这件事要等到有人在页面上生成 token 才暴露，
+	// 那时候报的是一句 read-only file system，看不出该改 unit 还是改配置。
+	//
+	// 只警告不起不来：清单写不进去不影响已经在连的接收端，为了一个部署问题
+	// 掐掉正在通话的人不划算。真正的动作点在生成 token 那一步（会回 500）。
+	if err := store.VerifyWritable(); err != nil {
+		log.Printf("警告: 管理面生成 token 会失败 —— %v", err)
+	}
 	for _, rec := range store.List() {
 		if _, err := registry.Add(rec); err != nil {
 			return signaling.TokenDigest{}, nil, fmt.Errorf("清单里的接收端 %s 不可用: %w", rec.Name, err)

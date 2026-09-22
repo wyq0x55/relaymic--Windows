@@ -34,6 +34,13 @@ type ReceiverStore struct {
 	recs []ReceiverRecord
 }
 
+// ErrStoreNotWritable 说明清单所在的目录写不进去。
+//
+// 生产上踩过一次：unit 里有 ProtectSystem=strict，/var/lib 对服务是只读的，
+// 于是"生成 token"在页面上报一句 read-only file system。这是部署问题，不是
+// 请求问题，所以单独分类，好让调用方回 500 并在启动时就先报出来。
+var ErrStoreNotWritable = errors.New("接收端清单写不进去")
+
 // LoadReceiverStore 读取清单。文件不存在就是"还没加过人"，不是错误。
 func LoadReceiverStore(path string) (*ReceiverStore, error) {
 	s := &ReceiverStore{path: path}
@@ -56,6 +63,33 @@ func LoadReceiverStore(path string) (*ReceiverStore, error) {
 		}
 	}
 	return s, nil
+}
+
+// VerifyWritable 在启动时确认这份清单真的能落盘。
+//
+// 存在的理由：目录不可写只有等到有人在管理面上生成 token 时才暴露，报出来的
+// 是一句 errno，看不出该改哪儿。启动就失败，日志里直接指到路径和该加的那行
+// unit 配置。只在启动时调用：它写的就是 saveLocked 用的那个临时文件。
+func (s *ReceiverStore) VerifyWritable() error {
+	if dir := filepath.Dir(s.path); dir != "" {
+		if err := os.MkdirAll(dir, 0o700); err != nil {
+			return s.notWritableError(err)
+		}
+	}
+	tmp := s.path + ".tmp"
+	if err := os.WriteFile(tmp, []byte("{}\n"), 0o600); err != nil {
+		return s.notWritableError(err)
+	}
+	if err := os.Remove(tmp); err != nil {
+		return s.notWritableError(err)
+	}
+	return nil
+}
+
+// notWritableError 把 errno 翻成"该改哪儿"：只给路径和原因，日志里够定位了。
+func (s *ReceiverStore) notWritableError(cause error) error {
+	return fmt.Errorf("%w: %s: %v；systemd 下给 unit 加 StateDirectory=relaymic，或把 receiversFile 指到可写目录",
+		ErrStoreNotWritable, s.path, cause)
 }
 
 // List 返回当前全部记录。
@@ -131,16 +165,16 @@ func (s *ReceiverStore) saveLocked() error {
 	data = append(data, '\n')
 	if dir := filepath.Dir(s.path); dir != "" {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
-			return err
+			return s.notWritableError(err)
 		}
 	}
 	tmp := s.path + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
+		return s.notWritableError(err)
 	}
 	if err := os.Rename(tmp, s.path); err != nil {
 		_ = os.Remove(tmp)
-		return err
+		return s.notWritableError(err)
 	}
 	return nil
 }
