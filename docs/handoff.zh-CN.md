@@ -51,28 +51,30 @@ RelayMic 不装驱动，它写进系统里已有的虚拟声卡。装完**必须
 
 最少一条线：VB-CABLE。要双向再加 Voicemeeter AUX VAIO（免费）。
 
-### 2. 放两个文件
+### 2. 把整个文件夹拷过去
 
 ```
-C:\relaymic\relaymic.exe
-C:\relaymic\receiver-token.txt      # 内容就一行 token
+C:\RelayMic\relaymic.exe
+C:\RelayMic\config.json             # 设置：Hub 地址、设备名
+C:\RelayMic\receiver-token.txt      # 凭据：内容就一行 token
 ```
+
+exe 旁边的 `config.json` 和 `receiver-token.txt` 会被自动采用（命令行参数仍然优先），
+所以文件夹拷到哪台机器、哪个盘符都不用改路径。
 
 ### 3. 运行
 
 ```
-C:\relaymic\relaymic.exe
+C:\RelayMic\relaymic.exe
 ```
 
 不带参数时它会：起接收端、在 `127.0.0.1:7420` 开控制台、并用默认浏览器打开它。
 Windows 可能弹 SmartScreen（这个 exe 没有代码签名）：**更多信息 → 仍要运行**。
 
-### 4. 第一次在页面上配置
+### 4. 第一次在页面上核对（通常不用改）
 
-- Hub 地址：`wss://<Hub 主机>:9443/ws/receiver`
-- 接收端凭据文件：`C:\relaymic\receiver-token.txt`
-- 输出设备：下拉里选 `CABLE Input (VB-Audio Virtual Cable)`（标着"虚拟线"）
-- 回传：要双向才填，选 `VoiceMeeter Aux Output (…)`
+- 这些值文件夹里已经配好了：Hub 地址、输出设备、回传设备。
+- 只需确认输出设备是 `CABLE Input (VB-Audio Virtual Cable)`（标着"虚拟线"）。
 - 点「保存并重启接收端」
 
 设备列表是现扫的，插好虚拟声卡后点「重新扫描设备」就能刷新。

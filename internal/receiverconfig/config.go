@@ -149,3 +149,40 @@ func DefaultDir() string {
 
 // DefaultPath 返回配置文件的默认路径。
 func DefaultPath() string { return filepath.Join(DefaultDir(), "config.json") }
+
+// DefaultPathFor 决定这次用哪份配置：exe 旁边有 config.json 就用它。
+//
+// 这条规则是为了"把一个文件夹拷给别人"：文件夹里的设置跟着走，而不是去读
+// 对方用户目录里那份（那里多半什么都没有）。纯函数，方便测。
+func DefaultPathFor(exeDir string) string {
+	if beside := filepath.Join(exeDir, "config.json"); exeDir != "" {
+		if _, err := os.Stat(beside); err == nil {
+			return beside
+		}
+	}
+	return DefaultPath()
+}
+
+// DefaultTokenFileFor 找 exe 旁边那份接收端凭据。
+//
+// 和配置同理：文件夹里的 receiver-token.txt 就是这一份的凭据，用户不必再手填
+// 一个绝对路径。
+func DefaultTokenFileFor(exeDir string) (string, bool) {
+	if exeDir == "" {
+		return "", false
+	}
+	path := filepath.Join(exeDir, "receiver-token.txt")
+	if _, err := os.Stat(path); err != nil {
+		return "", false
+	}
+	return path, true
+}
+
+// ExecutableDir 返回本进程所在目录，取不到时返回空串。
+func ExecutableDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return ""
+	}
+	return filepath.Dir(exe)
+}

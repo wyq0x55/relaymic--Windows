@@ -193,8 +193,10 @@ func parseFlags() (options, error) {
 	// 语音识别场景带宽根本不是瓶颈，没有理由为省包冒断字的险。
 	dtx := flag.Bool("dtx", false, "让发送端静音时停发包（省带宽，但可能掐掉轻声）")
 	record := flag.String("record", "", "把解码后、处理前的原始 PCM 录成 WAV，用于杂音诊断")
-	configPath := flag.String("config", receiverconfig.DefaultPath(), "配置文件路径；显式给出的命令行参数优先于文件里的值")
+	configPath := flag.String("config", receiverconfig.DefaultPathFor(receiverconfig.ExecutableDir()), "配置文件路径；exe 旁边有 config.json 时默认用它；显式给出的命令行参数优先于文件里的值")
 	flag.Parse()
+	// 记下命令行原样给的值：下面那个覆盖表会把它和配置文件里的值混在一起。
+	flagTokenFile := *tokenFile
 
 	// 配置文件是"平时怎么跑"，命令行是"这次怎么跑"，后者覆盖前者。
 	// 只覆盖显式给出的那些：不然命令行里一个没提的默认值会把文件里的
@@ -213,6 +215,7 @@ func parseFlags() (options, error) {
 	if !set["token-file"] {
 		*tokenFile = cfg.TokenFile
 	}
+	*tokenFile = resolveTokenFile(flagTokenFile, cfg.TokenFile, receiverconfig.ExecutableDir())
 	if !set["device"] {
 		*deviceName = cfg.Device
 	}
@@ -544,6 +547,23 @@ func (c *console) saveConfig(w http.ResponseWriter, r *http.Request) {
 	log.Println("设置已保存:", opts.configPath)
 	go c.restart()
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// resolveTokenFile 决定这次从哪个文件读凭据：命令行 > 配置文件 > exe 旁边那份。
+//
+// 最后一条是为了"把一个文件夹拷给别人"：文件夹里就带着 receiver-token.txt，
+// 对方不需要知道任何绝对路径。
+func resolveTokenFile(flagValue, configValue, exeDir string) string {
+	if flagValue != "" {
+		return flagValue
+	}
+	if configValue != "" {
+		return configValue
+	}
+	if path, ok := receiverconfig.DefaultTokenFileFor(exeDir); ok {
+		return path
+	}
+	return ""
 }
 
 // waitForSignal 一直阻塞到用户按下 Ctrl+C。

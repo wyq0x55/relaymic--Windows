@@ -187,3 +187,37 @@ func TestParseRejectsAConfigWithNoOutputDevice(t *testing.T) {
 		t.Fatal("Parse() 放过了空的输出设备")
 	}
 }
+
+// 把整个文件夹拷给别人时，设置得跟着走：exe 旁边有 config.json 就用它，
+// 而不是去读对方用户目录里的那份。
+func TestDefaultPathForPrefersAConfigBesideTheExecutable(t *testing.T) {
+	dir := t.TempDir()
+	if got := DefaultPathFor(dir); got != DefaultPath() {
+		t.Fatalf("旁边没有 config.json 时用了 %q，应当回落到用户目录", got)
+	}
+
+	beside := filepath.Join(dir, "config.json")
+	if err := os.WriteFile(beside, []byte("{}"), 0o600); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if got := DefaultPathFor(dir); got != beside {
+		t.Fatalf("DefaultPathFor() = %q，want %q", got, beside)
+	}
+}
+
+// 凭据同理：文件夹里的 receiver-token.txt 就是这份的凭据，不用手填路径。
+func TestDefaultTokenFileForFindsTheTokenBesideTheExecutable(t *testing.T) {
+	dir := t.TempDir()
+	if _, ok := DefaultTokenFileFor(dir); ok {
+		t.Fatal("旁边没有 token 文件时不该报「有」")
+	}
+
+	token := filepath.Join(dir, "receiver-token.txt")
+	if err := os.WriteFile(token, []byte("abc\n"), 0o600); err != nil {
+		t.Fatalf("write token: %v", err)
+	}
+	got, ok := DefaultTokenFileFor(dir)
+	if !ok || got != token {
+		t.Fatalf("DefaultTokenFileFor() = %q, %v，want %q, true", got, ok, token)
+	}
+}

@@ -57,6 +57,39 @@ func TestReadToken(t *testing.T) {
 	}
 }
 
+// 凭据来源的优先级：命令行 > 配置文件 > exe 旁边那份。
+//
+// 最后一条是为了"把文件夹发给别人"：文件夹里就带着 receiver-token.txt，
+// 对方不用知道任何绝对路径。
+func TestResolveTokenFilePrefersWhatTheUserSaid(t *testing.T) {
+	dir := t.TempDir()
+	beside := filepath.Join(dir, "receiver-token.txt")
+	if err := os.WriteFile(beside, []byte("token\n"), 0o600); err != nil {
+		t.Fatalf("write token: %v", err)
+	}
+	empty := t.TempDir()
+
+	cases := []struct {
+		name   string
+		flag   string
+		config string
+		exeDir string
+		want   string
+	}{
+		{name: "命令行给的", flag: `C:\cli\token.txt`, config: `C:\cfg\token.txt`, exeDir: dir, want: `C:\cli\token.txt`},
+		{name: "配置文件里的", config: `C:\cfg\token.txt`, exeDir: dir, want: `C:\cfg\token.txt`},
+		{name: "旁边那份", exeDir: dir, want: beside},
+		{name: "都没有就是空", exeDir: empty, want: ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := resolveTokenFile(tc.flag, tc.config, tc.exeDir); got != tc.want {
+				t.Fatalf("resolveTokenFile(%q, %q, %q) = %q，want %q", tc.flag, tc.config, tc.exeDir, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestResolveReturnSource(t *testing.T) {
 	tests := []struct {
 		name       string
