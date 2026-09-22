@@ -5,11 +5,20 @@
 package main
 
 import (
+	"bufio"
+	"fmt"
 	"os"
 
 	"github.com/hueshu/relaymic/internal/cli"
 )
 
 func main() {
-	os.Exit(cli.Run(os.Args[1:], cli.Commands(), os.Stdout, os.Stderr))
+	args := os.Args[1:]
+	code := cli.Run(args, cli.Commands(), os.Stdout, os.Stderr)
+	// 双击启动失败时把窗口留住：不然只看见闪一下，不知道为什么没起来。
+	if cli.ShouldPause(args, code, cli.IsConsole(os.Stdin)) {
+		fmt.Fprintln(os.Stderr, "\n按回车退出…")
+		_, _ = bufio.NewReader(os.Stdin).ReadString('\n')
+	}
+	os.Exit(code)
 }
