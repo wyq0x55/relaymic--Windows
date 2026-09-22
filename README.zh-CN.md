@@ -48,6 +48,9 @@ Claude Code、Codex、Cursor 都行。它会装依赖、编译、跑起来，然
 
 `SETUP.md` 是按 AI 能直接执行的方式写的：每步都有验证方法，失败了有排查表。
 
+**想把它交给别人用**（一个 exe + 一个 token + 一个 Hub 地址）：见
+[`docs/handoff.zh-CN.md`](docs/handoff.zh-CN.md)。
+
 想自己动手也可以，那份文档人也读得懂。大致是：两端装 Tailscale 组网 →
 Mac 上 `brew install opus && brew install --cask blackhole-2ch` →
 `go build -tags nolibopusfile ./cmd/receiver` → 跑起来 → 在另一台设备的浏览器打开

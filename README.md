@@ -61,6 +61,9 @@ Clone it, then tell your AI:
 `SETUP.md` is written for an AI to execute: every step has a verification, every failure has a
 troubleshooting entry.
 
+**Handing it to someone else** (one exe + one token + one Hub address): see
+[`docs/handoff.zh-CN.md`](docs/handoff.zh-CN.md) (Chinese).
+
 Doing it by hand works too. Roughly: deploy `relaymic-signaling` on any host with a TLS
 certificate and a public 443 → run `relaymic-receiver` on the machine with the virtual audio
 device and note the pairing code it prints → open `https://<your signalling host>` in a browser
