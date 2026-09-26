@@ -1,5 +1,7 @@
 # 把 RelayMic 交给别人用
 
+> [English](handoff.en.md) · 简体中文
+
 给的是**一个 exe、一个 token、一个 Hub 地址**。对方需要一台 Windows 电脑和一个
 浏览器，不需要装 Go、不需要改网络设置、机器上也不开任何入站端口。
 
@@ -11,11 +13,12 @@
 | --- | --- | --- |
 | `relaymic.exe` | GitHub Actions 的 `relaymic-windows` 产物，或本机 `go build -tags nolibopusfile -ldflags "-extldflags -static" -o relaymic.exe ./cmd/relaymic` | 约 28 MB，静态链接，对方不用装运行库 |
 | 一个 token | `relaymic signaling -gen-receiver 对方的名字` | 一人一个，输出是 JSON |
-| Hub 地址 | 你部署的控制面，形如 `wss://<Hub 主机>:9443/ws/receiver` | |
-| 发送端页面 | `https://<Hub 主机>:9443/` | 对方用手机或另一台电脑打开 |
+| Hub 地址 | 你部署的控制面，形如 `wss://<Hub 主机>/ws/receiver` | |
+| 发送端页面 | `https://<Hub 主机>/` | 对方用手机或另一台电脑打开 |
 
-**推荐：在 Hub 的管理面上生成**（见 `docs/signaling.md` 的"管理面"一节）：
-浏览器打开 `https://<Hub 主机>:9443/admin`，登录后填个名字点「生成 token」，
+**推荐：在 Hub 的管理面上生成**（见 `docs/signaling.md` 的"管理面"一节，或
+[`English`](signaling.en.md)）：
+浏览器打开 `https://<Hub 主机>/admin`，登录后填个名字点「生成 token」，
 把显示出来的那一行发给对方。对方写进自己的 `receiver-token.txt` 就能用，
 **不用重启 Hub，也不会打断正在通话的人**。
 
@@ -73,7 +76,7 @@ exe 旁边的 `config.json` 和 `receiver-token.txt` 会被自动采用（命令
 
 ```json
 {
-  "hub": "wss://<Hub 主机>:9443/ws/receiver",
+  "hub": "wss://<Hub 主机>/ws/receiver",
   "tokenFile": "receiver-token.txt",
   "device": "CABLE Input",
   "returnDevice": "VoiceMeeter Aux Output"
@@ -109,7 +112,7 @@ Windows 可能弹 SmartScreen（这个 exe 没有代码签名）：**更多信�
 
 1. 控制台页面上有一张 6 位配对码，5 分钟有效，过期会自动换一张。
 2. 把码念给对方。
-3. 对方在手机或另一台电脑打开 `https://<Hub 主机>:9443/`，输码，允许麦克风。
+3. 对方在手机或另一台电脑打开 `https://<Hub 主机>/`，输码，允许麦克风。
 
 ## 三、日常与更新
 
@@ -144,6 +147,7 @@ Windows 可能弹 SmartScreen（这个 exe 没有代码签名）：**更多信�
 
 ## 六、相关文档
 
-- 部署 Hub 与 TURN：`docs/vps-signaling-turn-agent-guide.zh-CN.md`、`docs/signaling.md`
-- 接收端细节（设备选择、回传、控制台）：`docs/windows-receiver.md`
+- 部署 Hub 与 TURN：[`docs/vps-signaling-turn-agent-guide.zh-CN.md`](vps-signaling-turn-agent-guide.zh-CN.md)、[`docs/signaling.md`](signaling.md)
+- English: [`handoff.en.md`](handoff.en.md)、[`vps-signaling-turn-agent-guide.en.md`](vps-signaling-turn-agent-guide.en.md)、[`signaling.en.md`](signaling.en.md)
+- 接收端细节（设备选择、回传、控制台）：[`docs/windows-receiver.zh-CN.md`](windows-receiver.zh-CN.md) · [English](windows-receiver.md)
 - 控制台页面上能看什么：`docs/local-console.tdd.md`

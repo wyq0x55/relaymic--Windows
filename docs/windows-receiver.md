@@ -1,5 +1,7 @@
 # Windows receiver
 
+> [简体中文](windows-receiver.zh-CN.md) · English
+
 RelayMic can use an installed virtual audio cable as the Windows microphone bridge. The receiver does **not** install or emulate a kernel audio driver.
 
 ## Audio path
@@ -69,7 +71,8 @@ use the loopback URL above to view or copy it.
 
 Use a second virtual cable for Teams speaker return: Teams plays to `VoiceMeeter Aux Input`,
 and start the Receiver with `-return-device "VoiceMeeter Aux Output"`. Public Signaling and
-short-lived coturn credentials are documented in `docs/signaling.md`; use `-force-relay` only
+short-lived coturn credentials are documented in [`signaling.en.md`](signaling.en.md)
+([中文](signaling.md)); use `-force-relay` only
 when validating the relay path.
 
 Running `relaymic` (or `relaymic receiver`) with no console arguments defaults to

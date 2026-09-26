@@ -4,7 +4,7 @@
 
 > **网络部分已过期。** 本文件描述的仍是旧的局域网/Tailscale 方式：发送端浏览器必须能
 > 访问接收端的 `7420` 端口。现在 `127.0.0.1:7420` 仅是本机控制台，两端都主动连到你
-> 部署的控制面。当前做法见 [`docs/signaling.md`](docs/signaling.md)；不要执行下文旧的组网步骤。
+> 部署的控制面。当前做法见 [`docs/signaling.md`](docs/signaling.md)（[English](docs/signaling.en.md)）；不要执行下文旧的组网步骤。
 > 本文中音频设备相关的部分（BlackHole / VB-CABLE、编译、排错）仍然有效。
 
 > **人类读者**：把这个文件连同仓库交给你的 AI 助手（Claude Code、Codex、Cursor

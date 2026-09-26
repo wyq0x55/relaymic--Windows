@@ -1,5 +1,7 @@
 # 公网 Signaling（#2）
 
+> [English](signaling.en.md) · 简体中文
+
 RelayMic 原来的模型是"发送端必须能直接访问接收端的 `:7420`"。接收端在公司电脑上、
 在 NAT 和公司防火墙后面，这条路走不通；上游的答案是让两台机器都进同一个 Tailscale
 网络。这一版把那个前提换掉。
@@ -45,7 +47,7 @@ RelayMic 原来的模型是"发送端必须能直接访问接收端的 `:7420`"�
 
 ## 协议
 
-控制面只有一条 WebSocket 通道和九种消息，没有"转发到任意目标"这种口子。
+控制面只有一条 WebSocket 通道和固定的消息类型，没有"转发到任意目标"这种口子。
 
 | 方向 | 类型 | 说明 |
 |---|---|---|
@@ -92,8 +94,7 @@ WebSocket 为同一个 session 下发短期 TURN 凭据；公开端点永远不�
 配齐下面两项就会开 `/admin`：
 
 ```bash
-relaymic-signaling -gen-admin-token > /etc/relaymic/admin-token
-sudo chmod 600 /etc/relaymic/admin-token
+sudo sh -c 'umask 077; relaymic-signaling -gen-admin-token > /etc/relaymic/admin-token'
 sudo chown relaymic:relaymic /etc/relaymic/admin-token
 ```
 
@@ -237,9 +238,9 @@ HTTPS。`-self-signed-dir <目录>` 可以在没有证书的情况下用自签�
   支持已完成。
 - **配对码用过即换**：会话结束（发送端断开、接收端重连）后必须重新输码。这是
   一次性配对码的直接后果，也是它安全的原因。
-- **`cmd/sender`、`cmd/sender-gui`、`cmd/selfcheck` 仍说旧的局域网协议**，
-  它们的目标是已被移除的 `https://<host>:7420/offer`。浏览器页面是当前唯一支持的
-  发送端；这几个命令和 `internal/discover` 的去留需要单独决定。
+- **`cmd/sender` 和 `cmd/selfcheck` 仍使用旧的局域网协议**，目标是已被移除的
+  `https://<host>:7420/offer`。`cmd/sender-gui` 已删除。浏览器页面是当前唯一支持的
+  发送端；旧命令与 `internal/discover` 的后续处理需要单独决定。
 
 ## 只放行 HTTP 代理的网络（TURN 隧道）
 

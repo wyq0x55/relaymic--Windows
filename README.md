@@ -48,20 +48,21 @@ when it runs macOS, nothing does.**
 
 ## Install
 
-**For a Windows receiver, start with the [handoff guide](docs/handoff.zh-CN.md)
-and [Windows receiver guide](docs/windows-receiver.md).** Deploy the Hub and TURN using
-the [deployment guide](docs/vps-signaling-turn-agent-guide.zh-CN.md).
+**For a Windows receiver, start with the [handoff guide](docs/handoff.en.md)
+([中文](docs/handoff.zh-CN.md)) and [Windows receiver guide](docs/windows-receiver.md).
+Deploy the Hub and TURN using the [English deployment guide](docs/vps-signaling-turn-agent-guide.en.md)
+([中文](docs/vps-signaling-turn-agent-guide.zh-CN.md)).
 
 For a Mac receiver, [`SETUP.md`](SETUP.md) covers audio setup, but its old
-LAN/Tailscale networking steps are obsolete; follow [`docs/signaling.md`](docs/signaling.md)
-for the current Hub-based connection instead.
+LAN/Tailscale networking steps are obsolete; follow [`docs/signaling.en.md`](docs/signaling.en.md)
+([中文](docs/signaling.md)) for the current Hub-based connection instead.
 
 Claude Code, Codex, Cursor — any of them can install the dependencies, build, get it running,
 and teach you how to use it. Point it to the current guides for your receiver OS.
 
 ```
 Clone it, then tell your AI:
-"Set up RelayMic using docs/signaling.md and the receiver guide for my OS;
+"Set up RelayMic using docs/signaling.en.md and the receiver guide for my OS;
  skip the legacy networking steps in SETUP.md, then teach me how to use it."
 ```
 
@@ -69,7 +70,7 @@ Do not run the old `SETUP.md` network steps verbatim: port `7420` is now the rec
 loopback-only console, not a sender-facing endpoint.
 
 **Handing it to someone else** (one exe + one token + one Hub address): see
-[`docs/handoff.zh-CN.md`](docs/handoff.zh-CN.md) (Chinese).
+[`docs/handoff.en.md`](docs/handoff.en.md) ([Chinese](docs/handoff.zh-CN.md)).
 
 Doing it by hand works too. Roughly: deploy `relaymic-signaling` behind HTTPS, generate a
 per-receiver token, and configure the receiver's Hub URL and token file. The receiver
@@ -102,7 +103,7 @@ shells now.
 - Command line plus a loopback-only browser console, no native GUI or installer
 - UI strings and logs are currently in Chinese
 - **You need to run a signalling host.** Both peers connect out to a Hub you deploy yourself
-  ([`docs/signaling.md`](docs/signaling.md)); the receiver's `127.0.0.1:7420` console is local
+  ([`docs/signaling.en.md`](docs/signaling.en.md), [中文](docs/signaling.md)); the receiver's `127.0.0.1:7420` console is local
   only. Direct WebRTC can still fail through restrictive NATs and firewalls: configure TURN
   for fallback and `-turn-tunnel` when TURN must traverse an HTTP proxy.
 - The input device is `BlackHole 2ch` on Mac or `CABLE Output` on Windows, not "RelayMic"
@@ -180,7 +181,7 @@ go test  -tags nolibopusfile ./internal/...
 ```
 
 For a Windows single-file build with a working C compiler and Opus development library,
-see the command in the [handoff guide](docs/handoff.zh-CN.md). The Windows CI artifact is
+see the command in the [handoff guide](docs/handoff.en.md). The Windows CI artifact is
 also named `relaymic.exe`.
 
 The control plane needs no CGO, so on a plain Linux server it is just:

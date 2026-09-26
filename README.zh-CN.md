@@ -39,22 +39,25 @@ Zoom / 听写 / Audacity / 任何应用 —— 当成普通麦克风读
 ## 安装
 
 **Windows 接收端先看[交付指南](docs/handoff.zh-CN.md)和
-[Windows 接收端说明](docs/windows-receiver.md)；** Hub/TURN 部署看
-[部署指南](docs/vps-signaling-turn-agent-guide.zh-CN.md)。
+[Windows 接收端说明](docs/windows-receiver.zh-CN.md)；** Hub/TURN 部署看
+[部署指南](docs/vps-signaling-turn-agent-guide.zh-CN.md)。对应英文版：
+[handoff](docs/handoff.en.md)、[Windows receiver](docs/windows-receiver.md)、
+[Hub/TURN deployment](docs/vps-signaling-turn-agent-guide.en.md)。
 
 Mac 接收端的音频设备安装可参考 [`SETUP.zh-CN.md`](SETUP.zh-CN.md)，但其中
-LAN/Tailscale 组网步骤已过期；联网应改用 [`docs/signaling.md`](docs/signaling.md)。
+LAN/Tailscale 组网步骤已过期；联网应改用 [`docs/signaling.md`](docs/signaling.md)，
+也可读[英文版](docs/signaling.en.md)。
 
 Claude Code、Codex、Cursor 都行。让它按当前的控制面和接收端文档装依赖、编译、
 跑起来，然后教你怎么用。你不用自己敲命令。
 
 ```
 克隆下来，然后对你的 AI 说：
-「按 docs/signaling.md 和对应系统的接收端文档装 RelayMic；跳过 SETUP.md
+「按 docs/signaling.md 和对应系统的接收端文档装 RelayMic；跳过 SETUP.zh-CN.md
  里过期的联网步骤，装完教我怎么用。」
 ```
 
-不要照旧版 `SETUP.md` 的联网步骤执行：`7420` 现在只用于接收端本机控制台，
+不要照旧版 `SETUP.zh-CN.md` 的联网步骤执行：`7420` 现在只用于接收端本机控制台，
 不是发送端入口。
 
 **想把它交给别人用**（一个 exe + 一个 token + 一个 Hub 地址）：见

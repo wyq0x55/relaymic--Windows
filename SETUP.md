@@ -5,7 +5,7 @@
 > **Out of date for the network layer.** This document still describes the retired
 > LAN/Tailscale setup where the sending browser had to reach the receiver's port `7420`.
 > The receiver's `127.0.0.1:7420` console is local only; both peers now dial out to a control plane
-> you deploy. Read [`docs/signaling.md`](docs/signaling.md) for the current path. Do not execute
+> you deploy. Read [`docs/signaling.en.md`](docs/signaling.en.md) for the current path. Do not execute
 > the old networking steps below. The audio-device half of this document (BlackHole / VB-CABLE,
 > builds, troubleshooting) is
 > still accurate.

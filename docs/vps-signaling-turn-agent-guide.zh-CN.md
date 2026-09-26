@@ -1,5 +1,7 @@
 # RelayMic VPS Signaling 与 TURN 部署指导（交给执行 Agent）
 
+> [English](vps-signaling-turn-agent-guide.en.md) · 简体中文
+
 > 目标：在一台已有公网 IPv4 的 Ubuntu VPS 上部署 RelayMic Signaling 与 coturn，
 > 为 Windows Receiver 和浏览器发送端提供 HTTPS/WSS 会合点，并为后续受限 NAT
 > 场景准备 TURN。本文不授权修改现有 VPN、3x-ui、Hysteria、SSH 或防火墙以外的服务。
@@ -149,8 +151,12 @@ sudo chmod 0755 /opt/relaymic/relaymic-signaling
 404。开了以后加人不用改配置重启（重启会掐断正在通话的人）。
 
 ```bash
-sudo -u relaymic /opt/relaymic/relaymic-signaling -gen-admin-token > /root/relaymic-admin-token
-sudo install -o relaymic -g relaymic -m 0600 /root/relaymic-admin-token /etc/relaymic/admin-token
+set -euo pipefail
+sudo install -o root -g root -m 0600 /dev/null /root/relaymic-admin-token
+sudo /opt/relaymic/relaymic-signaling -gen-admin-token |
+  sudo tee /root/relaymic-admin-token >/dev/null
+sudo install -o relaymic -g relaymic -m 0600 \
+  /root/relaymic-admin-token /etc/relaymic/admin-token
 sudo rm /root/relaymic-admin-token   # 抄给用户之后
 ```
 
@@ -183,10 +189,13 @@ Hub 启动时会自己探一次这个目录，写不进去会在日志里打
 `allowedOrigins` 只填 host，不填 `https://`。令牌生成方式如下；输出只进入受限文件：
 
 ```bash
-sudo umask 077
+set -o pipefail
+sudo install -o root -g root -m 0600 /dev/null \
+  /root/relaymic-receiver-bootstrap.json
 sudo -u relaymic /opt/relaymic/relaymic-signaling \
-  -gen-receiver "$RECEIVER_NAME" > /root/relaymic-receiver-bootstrap.json
-sudo chmod 0600 /root/relaymic-receiver-bootstrap.json
+  -gen-receiver "$RECEIVER_NAME" |
+  sudo tee /root/relaymic-receiver-bootstrap.json >/dev/null
+test -s /root/relaymic-receiver-bootstrap.json
 ```
 
 由 Agent 从该 JSON 中**仅在服务器内**取出 `token` 写入 `signaling.json` 的同名
@@ -297,7 +306,7 @@ total-quota=48
 sudo chmod 0600 /etc/turnserver.conf
 sudo systemctl enable --now coturn
 sudo systemctl status coturn --no-pager
-sudo ss -lntup | grep -E ':(3478|49160|49161)\\b' || true
+sudo ss -lntup | grep -E ':(3478|49160|49161)([[:space:]]|$)' || true
 ```
 
 打开云安全组及本机防火墙时只开放以下端口：
@@ -394,6 +403,7 @@ C:\\workspeace\\relaymic\\bin\\relaymic-receiver.exe `
    ```
 
 3. 验收：Receiver 日志出现 `TURN 隧道: 127.0.0.1:<port> → wss://...`，配对后链路显示
-   为 relay，且音频双向可通。隧道走的是 9443 的 WSS，不需要额外放行端口。
+   为 relay，且音频双向可通。隧道复用 Hub URL 的 WSS 端口（本指南的 Caddy 配置使用
+   `443`），不需要额外放行端口。
 
 注意：这只解决 Receiver 侧。发送端（浏览器）若也在同样的受限网络里，仍需各自的出口。
