@@ -21,14 +21,15 @@ The existing `internal/audio` path uses miniaudio through `malgo`; on Windows th
 1. Install VB-CABLE (or another Windows virtual cable).
 2. Reboot if the driver installer requests it.
 3. Build RelayMic on Windows.
-4. Run `receiver.exe`. On Windows the default `-device` selector is `CABLE Input`.
+4. Run `relaymic.exe` with a configured Hub URL and receiver token. It opens the local console;
+   on Windows the default `-device` selector is `CABLE Input`.
 5. Confirm the startup log says `虚拟麦克风输出设备: CABLE Input ...`.
 6. In Teams, choose the corresponding **CABLE Output** recording device as the microphone.
 
 If multiple devices contain `cable`, pass a more specific selector:
 
 ```powershell
-.\receiver.exe -device "CABLE Input"
+.\relaymic.exe receiver -device "CABLE Input"
 ```
 
 Before connecting a browser, verify the cable path with the bundled probe. It
@@ -41,7 +42,10 @@ go run -tags nolibopusfile ./cmd/probe -device "CABLE Input" -tone 3s
 
 ## Safety / failure behavior
 
-RelayMic never falls back to the Windows default speakers when the configured virtual cable cannot be found. Device selection must succeed before the receiver starts; an empty or ambiguous selector also exits and lists the matching endpoints. This prevents remote microphone audio from leaking through physical speakers.
+RelayMic does not fall back to Windows default speakers if the configured output is missing or
+ambiguous: the audio runtime fails and the local console stays available for correction. However,
+an explicitly selected physical playback device can play remote microphone audio aloud. Select
+and verify the intended virtual cable before sharing a pairing code.
 
 ## Local console
 
@@ -52,8 +56,8 @@ and the selected devices. The Receiver token is never displayed.
 
 The settings form scans the machine (`GET /api/devices`, loopback only) and offers the
 devices in a dropdown, grouped into `虚拟线` and `其他设备`: writing into the virtual
-microphone and capturing a second virtual cable are the two paths that matter, and picking
-a physical device there does not fail — it just silently produces no audio. A value saved
+microphone and capturing a second virtual cable are the two paths that matter. Selecting a
+physical playback device can route remote audio to real speakers, not just silence. A value saved
 as a substring (`CABLE Input`) is matched to the scanned full name, and a device that is
 currently missing stays visible as the current value instead of being silently replaced.
 "重新扫描设备" picks up a cable installed while the page is open.

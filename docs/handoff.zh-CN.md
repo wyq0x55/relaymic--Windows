@@ -68,6 +68,21 @@ C:\RelayMic\receiver-token.txt      # 凭据：内容就一行 token
 exe 旁边的 `config.json` 和 `receiver-token.txt` 会被自动采用（命令行参数仍然优先），
 所以文件夹拷到哪台机器、哪个盘符都不用改路径。
 
+交付前把 `config.json` 写成下面这样；Hub 地址换成你自己的。不开回传时删掉
+`returnDevice`，不要把 token 明文写进 JSON：
+
+```json
+{
+  "hub": "wss://<Hub 主机>:9443/ws/receiver",
+  "tokenFile": "receiver-token.txt",
+  "device": "CABLE Input",
+  "returnDevice": "VoiceMeeter Aux Output"
+}
+```
+
+不带 `config.json` 也能打开本机控制台，再在页面里填 Hub 和设备；
+`receiver-token.txt` 放在 exe 旁边仍会被自动读取。
+
 ### 3. 运行
 
 ```
@@ -79,7 +94,7 @@ Windows 可能弹 SmartScreen（这个 exe 没有代码签名）：**更多信�
 
 ### 4. 第一次在页面上核对（通常不用改）
 
-- 这些值文件夹里已经配好了：Hub 地址、输出设备、回传设备。
+- 若按上面的例子交付，Hub 地址、输出设备、回传设备已经配好；否则在页面里补齐。
 - 只需确认输出设备是 `CABLE Input (VB-Audio Virtual Cable)`（标着"虚拟线"）。
 - 点「保存并重启接收端」
 
@@ -99,9 +114,12 @@ Windows 可能弹 SmartScreen（这个 exe 没有代码签名）：**更多信�
 ## 三、日常与更新
 
 - 每次开机跑一次 `relaymic.exe`；想常驻就放启动项。
-- 页面上的设置存在 `%USERPROFILE%\.config\relaymic\config.json`，下次启动自动读；
-  命令行参数优先于文件里的值。换新版本 exe 时这份配置不用动。
-- 对方在只放行 HTTP 代理的公司网络里时，加 `-turn-tunnel`（TURN 流量套进控制面隧道）。
+- exe 旁边有 `config.json` 时，页面保存到这份文件；否则保存到
+  `%USERPROFILE%\.config\relaymic\config.json`。相对 `tokenFile` 路径按配置文件所在目录
+  解析。命令行参数优先；更新 exe 不必改配置。
+- 只能通过 HTTP 代理出网时，在设置中填代理地址（或配置 `HTTPS_PROXY`），
+  并启用 `turnTunnel`（命令行 `-turn-tunnel`）。前者负责连接 Hub，后者让
+  TURN/TCP 流量经 Hub 隧道传输；只开后者不能修复 WebSocket 出站失败。
 
 ## 四、常见问题
 
@@ -112,12 +130,12 @@ Windows 可能弹 SmartScreen（这个 exe 没有代码签名）：**更多信�
 | 对方听不见 | 会议软件的麦克风没选 `CABLE Output`，或输出设备选成了物理设备 |
 | 自己听不见会议里的声音 | 没开回传，或会议软件扬声器没选到第二条虚拟线 |
 | 页面显示"等待 Hub 下发" | 没连上 Hub：核对地址、token、网络 |
-| 一直卡在"连接控制面" | 网络挡了 WebSocket。先试 `-turn-tunnel`，再确认 `<Hub 主机>:9443` 可达 |
+| 一直卡在"连接控制面" | 检查 Hub 地址、凭据、代理设置与 HTTPS/WebSocket 出站；`-turn-tunnel` 只影响 TURN，不修复到 Hub 的连接 |
 | 对方打不开发送端页面 | 那是你的 Hub，确认它在跑、证书没过期 |
 
 ## 五、安全与边界
 
-- **token 是凭据，一人一个**。别发在群里；要收回某个人的访问，就把那一条从 Hub 配置里删掉并重启。
+- **token 是凭据，一人一个**。别发在群里；管理面开启时可直接注销；未开启时从 Hub 配置删除并重启。
 - Hub 只做配对和转发 SDP，音频不经过它；两端直连，打不通才走你自己配的 TURN。
 - 证书：Hub 用的是公网 CA 签发的证书，对方的机器不需要装任何根证书就能连。
   这类证书有效期很短，**要确认自动续期在跑**，否则到期当天所有接收端都连不上。

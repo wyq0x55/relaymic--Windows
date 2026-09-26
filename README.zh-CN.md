@@ -2,10 +2,10 @@
 
 > **中文** · [English](README.md)
 
-**把任意设备浏览器里的麦克风，变成一台远程 Mac 上的系统输入设备。**
+**把任意设备浏览器里的麦克风，变成远程 Mac 或 Windows 电脑上的系统输入设备。**
 
 远程桌面转发你的画面、键盘、鼠标——不转发你的声音。Windows 的 RDP 有麦克风重定向，
-但对端是 Mac 时，市面上每一个远程工具都没有这个功能。不是藏在某个菜单里，是不存在。
+但对端是 Mac 时，常见远程桌面工作流里通常没有这个功能。
 
 RelayMic 补的就是这一段。
 
@@ -13,9 +13,11 @@ RelayMic 补的就是这一段。
 你面前的设备（任意浏览器）
   ↓  采集麦克风 → Opus 48kHz 立体声
   ↓  WebRTC 加密传输（优先直连，打不通走 TURN 中继）
-远程的 Mac
-  ↓  解码 → 抖动缓冲 → 写入 BlackHole 虚拟音频设备
+远程 Mac（BlackHole）或 Windows 电脑（VB-CABLE）
+  ↓  解码 → 抖动缓冲 → 写入虚拟音频设备
 Zoom / 听写 / Audacity / 任何应用 —— 当成普通麦克风读
+
+需要时也能回传会议声音：会议软件扬声器 → 第二条虚拟线 → WebRTC → 浏览器。
 ```
 
 它**不替代**你的远程桌面软件，和 TeamViewer、AnyDesk、Parsec、RustDesk、Jump Desktop
@@ -36,25 +38,31 @@ Zoom / 听写 / Audacity / 任何应用 —— 当成普通麦克风读
 
 ## 安装
 
-**把这个仓库交给你的 AI 助手，让它读 [`SETUP.md`](SETUP.md)。**
+**Windows 接收端先看[交付指南](docs/handoff.zh-CN.md)和
+[Windows 接收端说明](docs/windows-receiver.md)；** Hub/TURN 部署看
+[部署指南](docs/vps-signaling-turn-agent-guide.zh-CN.md)。
 
-Claude Code、Codex、Cursor 都行。它会装依赖、编译、跑起来，然后教你怎么用。你不用
-自己敲命令。
+Mac 接收端的音频设备安装可参考 [`SETUP.zh-CN.md`](SETUP.zh-CN.md)，但其中
+LAN/Tailscale 组网步骤已过期；联网应改用 [`docs/signaling.md`](docs/signaling.md)。
+
+Claude Code、Codex、Cursor 都行。让它按当前的控制面和接收端文档装依赖、编译、
+跑起来，然后教你怎么用。你不用自己敲命令。
 
 ```
 克隆下来，然后对你的 AI 说：
-「照着 SETUP.md 把 RelayMic 装好，装完教我怎么用。」
+「按 docs/signaling.md 和对应系统的接收端文档装 RelayMic；跳过 SETUP.md
+ 里过期的联网步骤，装完教我怎么用。」
 ```
 
-`SETUP.md` 是按 AI 能直接执行的方式写的：每步都有验证方法，失败了有排查表。
+不要照旧版 `SETUP.md` 的联网步骤执行：`7420` 现在只用于接收端本机控制台，
+不是发送端入口。
 
 **想把它交给别人用**（一个 exe + 一个 token + 一个 Hub 地址）：见
 [`docs/handoff.zh-CN.md`](docs/handoff.zh-CN.md)。
 
-想自己动手也可以，那份文档人也读得懂。大致是：两端装 Tailscale 组网 →
-Mac 上 `brew install opus && brew install --cask blackhole-2ch` →
-`go build -tags nolibopusfile ./cmd/receiver` → 跑起来 → 在另一台设备的浏览器打开
-`https://<mac 的 tailnet IP>:7420`。
+自己动手的流程是：部署 HTTPS Hub → 给每台接收端生成独立 token → 在接收端配置
+Hub 地址和 token 文件 → 从本机控制台取得配对码 → 在另一台设备打开 Hub 的 HTTPS
+发送端页面输入配对码并允许麦克风。Mac 用 BlackHole，Windows 用 VB-CABLE。
 
 ## 命令行入口
 
@@ -78,21 +86,19 @@ relaymic version
 
 **这是作者自用工具的开源版本，不是打磨过的消费级产品。**
 
-- 命令行启动，没有图形界面，没有安装包
+- 命令行启动，提供只在本机开放的网页控制台；没有原生图形界面或安装包
 - 界面和日志文案目前是中文
-- **需要先组网**：当前版本没有公网信令服务器，发送端浏览器必须能直接访问
-  Mac 的 `7420` 端口。实际方案是 **Tailscale**（免费，两端装完各自拿一个稳定的
-  `100.x.x.x`，7420 直达、WebRTC 也在虚拟网内直连）。国内家宽普遍在运营商级 NAT
-  后面，没有公网 IP，端口映射和 DDNS 都救不了——这条路走不通
-- Mac 上的输入设备显示为 `BlackHole 2ch`，不叫 RelayMic
+- **需要自建公网 Hub**：两端主动连 Hub，接收端的 `127.0.0.1:7420` 仅供本机
+  控制台使用；遇到限制严格的 NAT/防火墙时，音频直连可能失败，需配置 TURN。
+  若网络只能经 HTTP 代理出站，还可使用 `-proxy` 与 `-turn-tunnel`
+- Mac 上的输入设备显示为 `BlackHole 2ch`，Windows 为 `CABLE Output`
 
 但**音频链路本身经过长期实战**——作者三台 Mac 日常在用。下面这些参数都是踩坑换来的，
 不建议"优化"：
 
 - **抖动缓冲 150ms**：实测值。局域网上 20ms 很爽，酒店 Wi-Fi 上立刻断续
 - **静音抑制（DTX）默认关**：它省带宽，代价是削掉轻声说话的词头，听写会丢第一个音节
-- **三路诊断录音**：处理前、缓冲后、从虚拟设备读回。"听着不对"能变成一段可以指着看
-  的波形
+- **可选诊断录音**：`-record` 录制解码后、处理前的 PCM，不能替代虚拟设备输出录音
 
 延迟大致等于一通电话：网络往返 + 150ms 缓冲。适合说话、听写、开会；不适合录音时
 监听自己的声音。
@@ -142,11 +148,15 @@ docs/            设计与决策记录
 
 ## 构建
 
+macOS 上先安装 Opus：
+
 ```bash
 brew install opus
-go build -tags nolibopusfile ./...
+go build -tags nolibopusfile -o relaymic ./cmd/relaymic
 go test  -tags nolibopusfile ./internal/...
 ```
+
+Windows 单文件构建命令和可下载的 CI 产物见[交付指南](docs/handoff.zh-CN.md)。
 
 `-tags nolibopusfile` 是必须的——只用编解码，不读 `.opus` 文件，不加会去链接
 libopusfile 然后失败。

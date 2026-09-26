@@ -2,11 +2,11 @@
 
 > **English** · [中文](README.zh-CN.md)
 
-**Turn the microphone in any device's browser into a system input device on a remote Mac.**
+**Turn the microphone in any device's browser into a system input device on a remote Mac or Windows PC.**
 
 Remote desktop forwards your screen, your keyboard and your mouse — not your voice. Windows has
 had microphone redirection since RDP shipped it. But the moment the machine on the other end is a
-Mac, that feature is gone from every tool on the market. Not hidden in a menu. Not there.
+Mac, that feature is missing from the usual remote-desktop workflow.
 
 RelayMic fills that gap.
 
@@ -14,7 +14,7 @@ RelayMic fills that gap.
 The device in front of you (any browser)
   ↓  captures the mic → Opus 48 kHz stereo
   ↓  encrypted WebRTC (direct when possible, TURN relay when not)
-The remote machine
+The remote Mac (BlackHole) or Windows PC (VB-CABLE)
   ↓  decode → jitter buffer → write into a virtual audio device
 Zoom / dictation / Audacity / anything — reads it as an ordinary microphone
 
@@ -48,26 +48,33 @@ when it runs macOS, nothing does.**
 
 ## Install
 
-**Hand this repository to your AI assistant and tell it to read [`SETUP.md`](SETUP.md).**
+**For a Windows receiver, start with the [handoff guide](docs/handoff.zh-CN.md)
+and [Windows receiver guide](docs/windows-receiver.md).** Deploy the Hub and TURN using
+the [deployment guide](docs/vps-signaling-turn-agent-guide.zh-CN.md).
 
-Claude Code, Codex, Cursor — any of them. It installs the dependencies, builds, gets it running,
-and then teaches you how to use it. You don't type the commands yourself.
+For a Mac receiver, [`SETUP.md`](SETUP.md) covers audio setup, but its old
+LAN/Tailscale networking steps are obsolete; follow [`docs/signaling.md`](docs/signaling.md)
+for the current Hub-based connection instead.
+
+Claude Code, Codex, Cursor — any of them can install the dependencies, build, get it running,
+and teach you how to use it. Point it to the current guides for your receiver OS.
 
 ```
 Clone it, then tell your AI:
-"Follow SETUP.md to install RelayMic, then teach me how to use it."
+"Set up RelayMic using docs/signaling.md and the receiver guide for my OS;
+ skip the legacy networking steps in SETUP.md, then teach me how to use it."
 ```
 
-`SETUP.md` is written for an AI to execute: every step has a verification, every failure has a
-troubleshooting entry.
+Do not run the old `SETUP.md` network steps verbatim: port `7420` is now the receiver's
+loopback-only console, not a sender-facing endpoint.
 
 **Handing it to someone else** (one exe + one token + one Hub address): see
 [`docs/handoff.zh-CN.md`](docs/handoff.zh-CN.md) (Chinese).
 
-Doing it by hand works too. Roughly: deploy `relaymic-signaling` on any host with a TLS
-certificate and a public 443 → run `relaymic-receiver` on the machine with the virtual audio
-device and note the pairing code it prints → open `https://<your signalling host>` in a browser
-anywhere, type that code, allow the microphone.
+Doing it by hand works too. Roughly: deploy `relaymic-signaling` behind HTTPS, generate a
+per-receiver token, and configure the receiver's Hub URL and token file. The receiver
+connects out to the Hub; read the pairing code in its local console, then open the Hub's
+HTTPS page on the sending device, enter the code and allow the microphone.
 
 ## One entry point
 
@@ -92,15 +99,13 @@ shells now.
 
 **This is the author's own tool, opened up — not a polished consumer product.**
 
-- Command line, no GUI, no installer
+- Command line plus a loopback-only browser console, no native GUI or installer
 - UI strings and logs are currently in Chinese
-- **You need to run a signalling host.** The receiving machine no longer listens on anything:
-  both ends dial out to one HTTPS/WSS 443 entry point that you deploy yourself
-  ([`docs/signaling.md`](docs/signaling.md)), so NAT, a corporate firewall or carrier-grade NAT
-  no longer matter, and no VPN is involved. Audio never passes through it — the two ends connect
-  directly. For hostile NATs, configure coturn REST API authentication in the Hub; it issues
-  the paired browser and Receiver the same short-lived TURN credentials
-- The input device on the Mac shows up as `BlackHole 2ch`, not "RelayMic"
+- **You need to run a signalling host.** Both peers connect out to a Hub you deploy yourself
+  ([`docs/signaling.md`](docs/signaling.md)); the receiver's `127.0.0.1:7420` console is local
+  only. Direct WebRTC can still fail through restrictive NATs and firewalls: configure TURN
+  for fallback and `-turn-tunnel` when TURN must traverse an HTTP proxy.
+- The input device is `BlackHole 2ch` on Mac or `CABLE Output` on Windows, not "RelayMic"
 
 But **the audio path itself has been in daily use** — three Macs, every day. The parameters below
 are what they are because something broke without them, and "optimizing" them is not advised:
@@ -109,8 +114,8 @@ are what they are because something broke without them, and "optimizing" them is
   the first time you use hotel Wi-Fi
 - **Silence suppression (DTX) off by default** — it saves bandwidth by clipping the front of
   quietly spoken words, and dictation loses the first syllable
-- **Three diagnostic recording taps** — before processing, after the buffer, and read back out of
-  the virtual device. "It sounded bad" becomes a waveform you can point at
+- **Optional diagnostic WAV** — `-record` captures decoded PCM before processing; it does not
+  capture the post-buffer or virtual-device output
 
 Latency is roughly a phone call: network round trip plus that 150 ms buffer. Built for talking,
 dictating and meetings; not for monitoring yourself while recording music.
@@ -166,11 +171,17 @@ Each of these was considered and rejected; writing them down saves the discussio
 
 ## Build
 
+On macOS, with Homebrew's Opus library:
+
 ```bash
 brew install opus
-go build -tags nolibopusfile ./...
+go build -tags nolibopusfile -o relaymic ./cmd/relaymic
 go test  -tags nolibopusfile ./internal/...
 ```
+
+For a Windows single-file build with a working C compiler and Opus development library,
+see the command in the [handoff guide](docs/handoff.zh-CN.md). The Windows CI artifact is
+also named `relaymic.exe`.
 
 The control plane needs no CGO, so on a plain Linux server it is just:
 

@@ -4,9 +4,10 @@
 
 > **Out of date for the network layer.** This document still describes the retired
 > LAN/Tailscale setup where the sending browser had to reach the receiver's port `7420`.
-> The receiver no longer listens on anything; both ends now dial out to a control plane
-> you deploy. Read [`docs/signaling.md`](docs/signaling.md) for the current path. The
-> audio-device half of this document (BlackHole / VB-CABLE, builds, troubleshooting) is
+> The receiver's `127.0.0.1:7420` console is local only; both peers now dial out to a control plane
+> you deploy. Read [`docs/signaling.md`](docs/signaling.md) for the current path. Do not execute
+> the old networking steps below. The audio-device half of this document (BlackHole / VB-CABLE,
+> builds, troubleshooting) is
 > still accurate.
 
 > **Human reader**: hand this file, along with the repository, to your AI assistant (Claude Code,
@@ -17,7 +18,8 @@
 
 ## Instructions for the AI
 
-You are installing RelayMic for a user. **Work through this in order.** Every step has a
+You are installing RelayMic for a user. **Use the current networking guide first; do not
+execute the obsolete LAN/Tailscale steps in this file.** Every applicable step has a
 verification — **if a verification fails, stop and diagnose; do not carry on to the next step.**
 When everything is installed, jump to the last section, "What to teach the user afterwards".
 
